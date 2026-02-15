@@ -980,11 +980,9 @@ export default function App() {
       <a className="topbar-link" href="#/dashboard">
         Dashboard
       </a>
-      {loggedInUser?.role === 'user' ? (
-        <a className="topbar-link" href="#/settings">
-          Settings
-        </a>
-      ) : null}
+      <a className="topbar-link" href="#/settings">
+        Settings
+      </a>
     </div>
   );
 
