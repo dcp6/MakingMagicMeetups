@@ -103,6 +103,13 @@ const findAccountById = db.prepare(`
   LIMIT 1
 `);
 
+const findAccountPasswordHashById = db.prepare(`
+  SELECT password_hash
+  FROM accounts
+  WHERE id = ?
+  LIMIT 1
+`);
+
 const updateAccountProfile = db.prepare(`
   UPDATE accounts
   SET full_name = ?,
@@ -521,6 +528,8 @@ app.patch('/api/me', (req, res) => {
   const fullName = String(req.body?.fullName ?? '').trim();
   const email = String(req.body?.email ?? '').trim().toLowerCase();
   const nextPassword = req.body?.password === undefined ? null : String(req.body?.password || '');
+  const currentPassword =
+    req.body?.currentPassword === undefined ? null : String(req.body?.currentPassword || '');
 
   const requestedUsername =
     req.body && Object.prototype.hasOwnProperty.call(req.body, 'username')
@@ -537,6 +546,19 @@ app.patch('/api/me', (req, res) => {
   }
   if (nextPassword !== null && nextPassword.length > 0 && nextPassword.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  }
+  if (nextPassword !== null && nextPassword.length > 0) {
+    if (!currentPassword) {
+      return res.status(400).json({ error: 'Please provide your current password.' });
+    }
+    const row = findAccountPasswordHashById.get(user.id);
+    if (!row?.password_hash) {
+      return res.status(500).json({ error: 'Failed to verify current password.' });
+    }
+    const providedHash = crypto.createHash('sha256').update(currentPassword).digest('hex');
+    if (providedHash !== row.password_hash) {
+      return res.status(401).json({ error: 'Current password is incorrect.' });
+    }
   }
 
   const saveTx = db.transaction((accountId) => {

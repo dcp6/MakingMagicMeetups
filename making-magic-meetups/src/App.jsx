@@ -72,6 +72,7 @@ export default function App() {
   const [settingsUsername, setSettingsUsername] = useState('');
   const [settingsFullName, setSettingsFullName] = useState('');
   const [settingsEmail, setSettingsEmail] = useState('');
+  const [settingsCurrentPassword, setSettingsCurrentPassword] = useState('');
   const [settingsNewPassword, setSettingsNewPassword] = useState('');
   const [settingsFeedback, setSettingsFeedback] = useState('');
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
@@ -1031,6 +1032,7 @@ export default function App() {
         body: JSON.stringify({
           fullName: settingsFullName,
           email: settingsEmail,
+          currentPassword: settingsNewPassword ? settingsCurrentPassword : undefined,
           password: settingsNewPassword ? settingsNewPassword : undefined
         })
       });
@@ -1041,6 +1043,7 @@ export default function App() {
       }
 
       setSettingsFeedback('Settings saved.');
+      setSettingsCurrentPassword('');
       setSettingsNewPassword('');
     } catch (_error) {
       setSettingsFeedback('Could not save settings.');
@@ -1196,6 +1199,18 @@ export default function App() {
                   value={settingsNewPassword}
                   onChange={(event) => setSettingsNewPassword(event.target.value)}
                   minLength={6}
+                />
+                <label htmlFor="settings-current-password" className="sr-only">
+                  Current Password
+                </label>
+                <input
+                  id="settings-current-password"
+                  type="password"
+                  placeholder="Current password (required to change password)"
+                  value={settingsCurrentPassword}
+                  onChange={(event) => setSettingsCurrentPassword(event.target.value)}
+                  required={Boolean(settingsNewPassword)}
+                  disabled={!settingsNewPassword}
                 />
                 <button type="submit" disabled={isSettingsSaving}>
                   {isSettingsSaving ? 'Saving...' : 'Save Settings'}
