@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import cors from 'cors';
 import Database from 'better-sqlite3';
 import express from 'express';
+import jwt from 'jsonwebtoken';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,7 +25,17 @@ const defaultAllowedOrigins = [
 const adminApiKey = process.env.ADMIN_API_KEY || '';
 const adminUsername = process.env.ADMIN_USERNAME || 'admin';
 const adminPassword = process.env.ADMIN_PASSWORD || 'test123';
-const googleMapsApiKey = String(process.env.GOOGLE_MAPS_API_KEY || '').trim();
+const mapkitTeamId = String(process.env.MAPKIT_TEAM_ID || '').trim();
+const mapkitKeyId = String(process.env.MAPKIT_KEY_ID || '').trim();
+const mapkitPrivateKeyRaw = String(process.env.MAPKIT_PRIVATE_KEY || '').trim();
+const mapkitPrivateKeyPath = String(process.env.MAPKIT_PRIVATE_KEY_PATH || '').trim();
+const mapkitPrivateKeyBase64 = String(process.env.MAPKIT_PRIVATE_KEY_BASE64 || '').trim();
+const mapkitOrigin = String(
+  process.env.MAPKIT_ORIGIN || 'https://www.makingmagicmeetups.com'
+).trim();
+const mapkitTtlSeconds = process.env.MAPKIT_TOKEN_TTL_SECONDS
+  ? Number(process.env.MAPKIT_TOKEN_TTL_SECONDS)
+  : 60 * 60;
 
 fs.mkdirSync(dbDir, { recursive: true });
 
@@ -399,28 +410,28 @@ function ensureLoggedInUser(req, res) {
   return user;
 }
 
-async function fetchGooglePlacesJson(endpoint, params) {
-  if (!googleMapsApiKey) {
-    return { ok: false, status: 500, json: { error: 'Google Maps API key not configured.' } };
-  }
-
-  const url = new URL(endpoint);
-  for (const [key, value] of Object.entries(params || {})) {
-    if (value === null || value === undefined || value === '') {
-      continue;
+function loadMapKitPrivateKey() {
+  if (mapkitPrivateKeyPath) {
+    try {
+      return fs.readFileSync(mapkitPrivateKeyPath, 'utf8');
+    } catch (_error) {
+      return '';
     }
-    url.searchParams.set(key, String(value));
   }
-  url.searchParams.set('key', googleMapsApiKey);
 
-  const response = await fetch(url.toString(), { method: 'GET' });
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch (_error) {
-    payload = null;
+  if (mapkitPrivateKeyBase64) {
+    try {
+      return Buffer.from(mapkitPrivateKeyBase64, 'base64').toString('utf8');
+    } catch (_error) {
+      return '';
+    }
   }
-  return { ok: response.ok, status: response.status, json: payload };
+
+  if (mapkitPrivateKeyRaw) {
+    return mapkitPrivateKeyRaw.replace(/\\n/g, '\n');
+  }
+
+  return '';
 }
 
 const app = express();
@@ -476,85 +487,32 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/stores/search', async (req, res) => {
-  const user = ensureLoggedInUser(req, res);
-  if (!user) {
-    return;
+app.get('/api/mapkit/token', (_req, res) => {
+  if (!mapkitTeamId || !mapkitKeyId) {
+    return res.status(500).json({ error: 'MapKit credentials not configured.' });
   }
 
-  const query = String(req.query?.q || '').trim();
-  if (!query || query.length < 2) {
-    return res.status(400).json({ error: 'Please provide a search query.' });
+  const privateKey = loadMapKitPrivateKey();
+  if (!privateKey) {
+    return res.status(500).json({ error: 'MapKit private key not configured.' });
   }
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const payload = {
+    iss: mapkitTeamId,
+    iat: nowSeconds,
+    exp: nowSeconds + (Number.isFinite(mapkitTtlSeconds) ? mapkitTtlSeconds : 60 * 60),
+    origin: mapkitOrigin
+  };
 
   try {
-    const result = await fetchGooglePlacesJson(
-      'https://maps.googleapis.com/maps/api/place/textsearch/json',
-      { query }
-    );
-
-    if (!result.ok) {
-      return res.status(502).json({ error: 'Store search failed.' });
-    }
-
-    const rows = Array.isArray(result.json?.results) ? result.json.results : [];
-    const stores = rows.slice(0, 10).map((row) => ({
-      placeId: row.place_id || null,
-      name: row.name || null,
-      address: row.formatted_address || null,
-      rating: row.rating ?? null,
-      userRatingsTotal: row.user_ratings_total ?? null,
-      businessStatus: row.business_status ?? null
-    }));
-
-    return res.json({ ok: true, stores });
-  } catch (_error) {
-    return res.status(500).json({ error: 'Store search failed.' });
-  }
-});
-
-app.get('/api/stores/details', async (req, res) => {
-  const user = ensureLoggedInUser(req, res);
-  if (!user) {
-    return;
-  }
-
-  const placeId = String(req.query?.placeId || '').trim();
-  if (!placeId) {
-    return res.status(400).json({ error: 'Missing placeId.' });
-  }
-
-  try {
-    const result = await fetchGooglePlacesJson(
-      'https://maps.googleapis.com/maps/api/place/details/json',
-      {
-        place_id: placeId,
-        fields: 'place_id,name,formatted_address,website,url,formatted_phone_number'
-      }
-    );
-
-    if (!result.ok) {
-      return res.status(502).json({ error: 'Store lookup failed.' });
-    }
-
-    const row = result.json?.result || null;
-    if (!row) {
-      return res.status(404).json({ error: 'Store not found.' });
-    }
-
-    return res.json({
-      ok: true,
-      store: {
-        placeId: row.place_id || placeId,
-        name: row.name || null,
-        address: row.formatted_address || null,
-        website: row.website || null,
-        url: row.url || null,
-        phone: row.formatted_phone_number || null
-      }
+    const token = jwt.sign(payload, privateKey, {
+      algorithm: 'ES256',
+      header: { kid: mapkitKeyId, typ: 'JWT' }
     });
+    return res.json({ ok: true, token });
   } catch (_error) {
-    return res.status(500).json({ error: 'Store lookup failed.' });
+    return res.status(500).json({ error: 'Failed to issue MapKit token.' });
   }
 });
 
@@ -564,10 +522,11 @@ app.patch('/api/me/preferred-store', async (req, res) => {
     return;
   }
 
-  const placeId =
+  const placeIdRaw =
     req.body && Object.prototype.hasOwnProperty.call(req.body, 'placeId')
       ? String(req.body.placeId || '').trim()
-      : null;
+      : '';
+  const placeId = placeIdRaw ? placeIdRaw : null;
 
   if (!placeId) {
     updatePreferredStore.run(null, null, null, null, null, null, user.id);
@@ -585,31 +544,14 @@ app.patch('/api/me/preferred-store', async (req, res) => {
     });
   }
 
-  try {
-    const details = await fetchGooglePlacesJson(
-      'https://maps.googleapis.com/maps/api/place/details/json',
-      {
-        place_id: placeId,
-        fields: 'place_id,name,formatted_address,website,url,formatted_phone_number'
-      }
-    );
-    if (!details.ok) {
-      return res.status(502).json({ error: 'Store lookup failed.' });
-    }
-    const row = details.json?.result || null;
-    if (!row) {
-      return res.status(404).json({ error: 'Store not found.' });
-    }
+  const name = String(req.body?.name || '').trim() || null;
+  const address = String(req.body?.address || '').trim() || null;
+  const url = String(req.body?.url || '').trim() || null;
+  const website = String(req.body?.website || '').trim() || null;
+  const phone = String(req.body?.phone || '').trim() || null;
 
-    updatePreferredStore.run(
-      row.place_id || placeId,
-      row.name || null,
-      row.formatted_address || null,
-      row.url || null,
-      row.website || null,
-      row.formatted_phone_number || null,
-      user.id
-    );
+  try {
+    updatePreferredStore.run(placeId, name, address, url, website, phone, user.id);
 
     const account = findAccountById.get(user.id);
     return res.json({

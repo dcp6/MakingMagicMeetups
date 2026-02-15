@@ -82,6 +82,7 @@ export default function App() {
   const [storeSearchFeedback, setStoreSearchFeedback] = useState('');
   const [isStoreSearching, setIsStoreSearching] = useState(false);
   const [isPreferredStoreSaving, setIsPreferredStoreSaving] = useState(false);
+  const [isMapKitReady, setIsMapKitReady] = useState(false);
   const [loginServiceStatus, setLoginServiceStatus] = useState('unknown');
   const [loginServiceLastCheckedAt, setLoginServiceLastCheckedAt] = useState(null);
   const [loginServiceLastStatusCode, setLoginServiceLastStatusCode] = useState(null);
@@ -244,6 +245,36 @@ export default function App() {
     })();
   }, [route, loggedInUser, loginAuthHeader, apiBaseUrl]);
 
+  useEffect(() => {
+    if (route !== 'settings') {
+      return;
+    }
+    if (!loggedInUser || loggedInUser.role !== 'user') {
+      return;
+    }
+
+    const mapkit = window.mapkit;
+    if (!mapkit) {
+      setIsMapKitReady(false);
+      setStoreSearchFeedback('MapKit JS failed to load.');
+      return;
+    }
+
+    if (!window.__makingMagicMapKitInited) {
+      window.__makingMagicMapKitInited = true;
+      mapkit.init({
+        authorizationCallback(done) {
+          fetch(`${apiBaseUrl}/api/mapkit/token`)
+            .then((response) => response.json())
+            .then((payload) => done(payload.token || ''))
+            .catch(() => done(''));
+        }
+      });
+    }
+
+    setIsMapKitReady(true);
+  }, [route, loggedInUser, apiBaseUrl]);
+
   async function handleStoreSearch(event) {
     event.preventDefault();
     setStoreSearchFeedback('');
@@ -263,21 +294,36 @@ export default function App() {
       return;
     }
 
+    if (!window.mapkit || !isMapKitReady) {
+      setStoreSearchFeedback('MapKit is not ready yet.');
+      return;
+    }
+
     setIsStoreSearching(true);
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/api/stores/search?q=${encodeURIComponent(query)}`,
-        {
-          headers: { Authorization: loginAuthHeader }
-        }
-      );
-      const payload = await response.json();
-      if (!response.ok) {
-        setStoreSearchResults([]);
-        setStoreSearchFeedback(payload.error || 'Could not search stores.');
-        return;
-      }
-      setStoreSearchResults(Array.isArray(payload.stores) ? payload.stores : []);
+      const search = new window.mapkit.Search();
+      const data = await new Promise((resolve, reject) => {
+        search.search(query, (error, response) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve(response);
+        });
+      });
+
+      const places = Array.isArray(data?.places) ? data.places : [];
+      const stores = places.slice(0, 10).map((place) => {
+        const placeId = place?.placeId || place?.identifier || place?.id || null;
+        const name = place?.name || null;
+        const address = place?.formattedAddress || place?.address || null;
+        const url = placeId ? `https://maps.apple.com/place?place-id=${encodeURIComponent(placeId)}` : null;
+        const website = place?.website || null;
+        const phone = place?.phoneNumber || null;
+        return { placeId, name, address, url, website, phone };
+      });
+
+      setStoreSearchResults(stores);
       setStoreSearchFeedback('');
     } catch (_error) {
       setStoreSearchResults([]);
@@ -287,7 +333,7 @@ export default function App() {
     }
   }
 
-  async function savePreferredStore(placeId) {
+  async function savePreferredStore(store) {
     setStoreSearchFeedback('');
 
     if (!loggedInUser || loggedInUser.role !== 'user') {
@@ -307,7 +353,18 @@ export default function App() {
           'Content-Type': 'application/json',
           Authorization: loginAuthHeader
         },
-        body: JSON.stringify({ placeId: placeId || null })
+        body: JSON.stringify(
+          store
+            ? {
+                placeId: store.placeId || null,
+                name: store.name || null,
+                address: store.address || null,
+                url: store.url || null,
+                website: store.website || null,
+                phone: store.phone || null
+              }
+            : { placeId: null }
+        )
       });
       const payload = await response.json();
       if (!response.ok) {
@@ -315,7 +372,7 @@ export default function App() {
         return;
       }
       setPreferredStore(payload.preferredStore || null);
-      setStoreSearchFeedback(placeId ? 'Preferred store saved.' : 'Preferred store cleared.');
+      setStoreSearchFeedback(store ? 'Preferred store saved.' : 'Preferred store cleared.');
     } catch (_error) {
       setStoreSearchFeedback('Could not save preferred store.');
     } finally {
@@ -1411,6 +1468,13 @@ export default function App() {
                     </button>
                   </form>
 
+                  {!isMapKitReady ? (
+                    <p className="settings-store-address">
+                      Store search requires Apple MapKit. If this message persists, the MapKit token
+                      is not configured.
+                    </p>
+                  ) : null}
+
                   {storeSearchFeedback ? <p>{storeSearchFeedback}</p> : null}
 
                   {storeSearchResults.length ? (
@@ -1423,7 +1487,7 @@ export default function App() {
                           </div>
                           <button
                             type="button"
-                            onClick={() => savePreferredStore(store.placeId)}
+                            onClick={() => savePreferredStore(store)}
                             disabled={isPreferredStoreSaving || !store.placeId}
                           >
                             {isPreferredStoreSaving ? 'Saving...' : 'Set Preferred'}
