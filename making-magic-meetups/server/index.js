@@ -73,6 +73,13 @@ const insertAccount = db.prepare(`
   VALUES (?, ?, ?, ?)
 `);
 
+const findAccountForLogin = db.prepare(`
+  SELECT id, username, full_name, email, password_hash
+  FROM accounts
+  WHERE username = ? OR email = ?
+  LIMIT 1
+`);
+
 const app = express();
 app.use(
   cors({
@@ -162,6 +169,32 @@ app.post('/api/accounts', (req, res) => {
 
     return res.status(500).json({ error: 'Failed to create account.' });
   }
+});
+
+app.post('/api/login', (req, res) => {
+  const identifier = String(req.body?.identifier || '').trim().toLowerCase();
+  const password = String(req.body?.password || '');
+
+  if (!identifier || !password) {
+    return res.status(400).json({ error: 'Please provide username/email and password.' });
+  }
+
+  const account = findAccountForLogin.get(identifier, identifier);
+  const providedHash = crypto.createHash('sha256').update(password).digest('hex');
+
+  if (!account || account.password_hash !== providedHash) {
+    return res.status(401).json({ error: 'Invalid login credentials.' });
+  }
+
+  return res.json({
+    ok: true,
+    user: {
+      id: account.id,
+      username: account.username,
+      fullName: account.full_name,
+      email: account.email
+    }
+  });
 });
 
 app.get('/api/users', (_req, res) => {

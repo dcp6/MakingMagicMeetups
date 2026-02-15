@@ -70,6 +70,47 @@ body {
   font-size: 0.86rem;
 }
 
+.topbar-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+}
+
+.top-login-form {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.top-login-form input {
+  min-height: 36px;
+  width: 170px;
+  border-radius: 0.5rem;
+  border: 1px solid var(--stroke);
+  background: #f8fbff;
+  color: var(--text-900);
+  padding: 0 0.65rem;
+}
+
+.top-login-form button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 0.5rem;
+  padding: 0 0.8rem;
+  font-weight: 700;
+  background: var(--mint-400);
+  color: #073237;
+  cursor: pointer;
+}
+
+.top-login-feedback {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-700);
+}
+
 .hero {
   max-width: 720px;
   padding: 1.3rem;
@@ -230,9 +271,21 @@ h1 {
 @media (max-width: 640px) {
   .topbar {
     margin-bottom: 1.5rem;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.7rem;
   }
 
-  .topnav a {
-    font-size: 0.78rem;
+  .topbar-right {
+    align-items: stretch;
+  }
+
+  .top-login-form {
+    justify-content: stretch;
+  }
+
+  .top-login-form input,
+  .top-login-form button {
+    width: 100%;
   }
 }

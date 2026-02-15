@@ -34,12 +34,11 @@ export default function App() {
   const [accountPassword, setAccountPassword] = useState('');
   const [accountFeedback, setAccountFeedback] = useState('');
   const [isAccountSubmitting, setIsAccountSubmitting] = useState(false);
-  const [adminName, setAdminName] = useState('admin');
-  const [adminPass, setAdminPass] = useState('test123');
-  const [adminError, setAdminError] = useState('');
-  const [adminUsers, setAdminUsers] = useState([]);
-  const [isAdminLoading, setIsAdminLoading] = useState(false);
-  const [isAdminAuthed, setIsAdminAuthed] = useState(false);
+  const [loginIdentifier, setLoginIdentifier] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginFeedback, setLoginFeedback] = useState('');
+  const [isLoginSubmitting, setIsLoginSubmitting] = useState(false);
+  const [loggedInUser, setLoggedInUser] = useState(null);
 
   useEffect(() => {
     function syncRouteFromHash() {
@@ -84,55 +83,37 @@ export default function App() {
     }
   }
 
-  async function loadAdminUsers(username, password) {
-    const auth = btoa(`${username}:${password}`);
-    const response = await fetch(`${apiBaseUrl}/api/users`, {
-      headers: {
-        Authorization: `Basic ${auth}`
-      }
-    });
-
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error || 'Failed to load users.');
-    }
-
-    setAdminUsers(payload.users || []);
-  }
-
-  async function handleAdminLogin(event) {
+  async function handleUserLogin(event) {
     event.preventDefault();
-    setAdminError('');
-    setIsAdminLoading(true);
+    setLoginFeedback('');
+    setIsLoginSubmitting(true);
 
     try {
-      const loginResponse = await fetch(`${apiBaseUrl}/api/admin/login`, {
+      const loginResponse = await fetch(`${apiBaseUrl}/api/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          username: adminName,
-          password: adminPass
+          identifier: loginIdentifier,
+          password: loginPassword
         })
       });
 
       const loginPayload = await loginResponse.json();
       if (!loginResponse.ok) {
-        setIsAdminAuthed(false);
-        setAdminUsers([]);
-        setAdminError(loginPayload.error || 'Login failed.');
+        setLoggedInUser(null);
+        setLoginFeedback(loginPayload.error || 'Login failed.');
         return;
       }
 
-      setIsAdminAuthed(true);
-      await loadAdminUsers(adminName, adminPass);
+      setLoggedInUser(loginPayload.user || null);
+      setLoginFeedback(`Welcome, ${loginPayload.user?.username || 'user'}.`);
     } catch (_error) {
-      setIsAdminAuthed(false);
-      setAdminUsers([]);
-      setAdminError('Could not reach login service.');
+      setLoggedInUser(null);
+      setLoginFeedback('Could not reach login service.');
     } finally {
-      setIsAdminLoading(false);
+      setIsLoginSubmitting(false);
     }
   }
 
@@ -173,15 +154,48 @@ export default function App() {
     }
   }
 
+  const headerLogin = (
+    <div className="topbar-right">
+      <form className="top-login-form" onSubmit={handleUserLogin}>
+        <label htmlFor="top-login-identifier" className="sr-only">
+          Username or Email
+        </label>
+        <input
+          id="top-login-identifier"
+          type="text"
+          placeholder="username or email"
+          value={loginIdentifier}
+          onChange={(event) => setLoginIdentifier(event.target.value)}
+          required
+        />
+        <label htmlFor="top-login-password" className="sr-only">
+          Password
+        </label>
+        <input
+          id="top-login-password"
+          type="password"
+          placeholder="password"
+          value={loginPassword}
+          onChange={(event) => setLoginPassword(event.target.value)}
+          required
+        />
+        <button type="submit" disabled={isLoginSubmitting}>
+          {isLoginSubmitting ? 'Signing in...' : 'Login'}
+        </button>
+      </form>
+      {loginFeedback ? <p className="top-login-feedback">{loginFeedback}</p> : null}
+      {loggedInUser ? (
+        <p className="top-login-feedback">Signed in as {loggedInUser.username}</p>
+      ) : null}
+    </div>
+  );
+
   if (route === 'create-account') {
     return (
       <div className="page">
         <header className="topbar">
           <p className="logo">Making Magic Meetups</p>
-          <nav className="topnav">
-            <a href="#">Home</a>
-            <a href="#admin">Login</a>
-          </nav>
+          {headerLogin}
         </header>
 
         <main>
@@ -253,10 +267,7 @@ export default function App() {
     <div className="page">
       <header className="topbar">
         <p className="logo">Making Magic Meetups</p>
-        <nav className="topnav">
-          <a href="#admin">Login</a>
-          <a href="#join">Join</a>
-        </nav>
+        {headerLogin}
       </header>
 
       <main>
@@ -306,43 +317,6 @@ export default function App() {
           {feedback ? <p>{feedback}</p> : null}
         </section>
 
-        <section className="join" id="admin">
-          <h2>User Login</h2>
-          <p>Use your credentials to view subscriber records.</p>
-          <form className="join-form" onSubmit={handleAdminLogin}>
-            <label htmlFor="admin-username" className="sr-only">
-              Username
-            </label>
-            <input
-              id="admin-username"
-              type="text"
-              placeholder="username"
-              value={adminName}
-              onChange={(event) => setAdminName(event.target.value)}
-              required
-            />
-            <label htmlFor="admin-password" className="sr-only">
-              Password
-            </label>
-            <input
-              id="admin-password"
-              type="password"
-              placeholder="password"
-              value={adminPass}
-              onChange={(event) => setAdminPass(event.target.value)}
-              required
-            />
-            <button type="submit" disabled={isAdminLoading}>
-              {isAdminLoading ? 'Checking...' : 'User Login'}
-            </button>
-          </form>
-          {adminError ? <p>{adminError}</p> : null}
-          {isAdminAuthed ? (
-            <p>
-              Logged in. Users in database: <strong>{adminUsers.length}</strong>
-            </p>
-          ) : null}
-        </section>
       </main>
     </div>
   );
