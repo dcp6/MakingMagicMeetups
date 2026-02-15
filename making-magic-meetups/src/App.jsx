@@ -46,6 +46,7 @@ export default function App() {
   const [cardInputText, setCardInputText] = useState('');
   const [uploadedCards, setUploadedCards] = useState([]);
   const [cardCostTotal, setCardCostTotal] = useState(0);
+  const [cardAskingTotal, setCardAskingTotal] = useState(0);
   const [cardUploadFeedback, setCardUploadFeedback] = useState('');
   const [isCardPriceLoading, setIsCardPriceLoading] = useState(false);
 
@@ -367,6 +368,29 @@ export default function App() {
     return value;
   }
 
+  function formatCents(cents) {
+    if (cents === null || cents === undefined) {
+      return '';
+    }
+    const dollars = Number(cents) / 100;
+    return Number.isFinite(dollars) ? dollars.toFixed(2) : '';
+  }
+
+  function parseDollarsToCents(value) {
+    if (value === '' || value === null || value === undefined) {
+      return null;
+    }
+    const normalized = String(value).trim().replace(/^\$/, '').replace(/,/g, '');
+    if (!normalized) {
+      return null;
+    }
+    const dollars = Number(normalized);
+    if (!Number.isFinite(dollars) || dollars < 0) {
+      return null;
+    }
+    return Math.round(dollars * 100);
+  }
+
   function recomputeCostTotal(pricedEntries) {
     return pricedEntries.reduce((sum, entry) => {
       if (entry.lineTotalUsd === null) {
@@ -376,22 +400,40 @@ export default function App() {
     }, 0);
   }
 
+  function recomputeAskingTotal(pricedEntries) {
+    return pricedEntries.reduce((sum, entry) => {
+      if (entry.askingLineTotalUsd === null) {
+        return sum;
+      }
+      return sum + entry.askingLineTotalUsd;
+    }, 0);
+  }
+
   async function priceCards(entries) {
     const uniqueNames = entries.map((entry) => entry.cardName);
     const pricedUnique = await Promise.all(uniqueNames.map((name) => fetchCardPriceFromScryfall(name)));
     const pricedEntries = pricedUnique.map((priced, index) => {
       const quantity = entries[index]?.quantity ?? 1;
       const unitUsd = parseUsdPrice(priced.tcgLow);
+      const askingPriceCents = entries[index]?.askingPriceCents ?? null;
+      const askingUnitUsd =
+        askingPriceCents === null || askingPriceCents === undefined
+          ? null
+          : Number(askingPriceCents) / 100;
       return {
         ...priced,
         quantity,
         unitUsd,
-        lineTotalUsd: unitUsd !== null ? unitUsd * quantity : null
+        lineTotalUsd: unitUsd !== null ? unitUsd * quantity : null,
+        askingPriceCents,
+        askingUnitUsd,
+        askingLineTotalUsd: askingUnitUsd !== null ? askingUnitUsd * quantity : null
       };
     });
 
     setUploadedCards(pricedEntries);
     setCardCostTotal(recomputeCostTotal(pricedEntries));
+    setCardAskingTotal(recomputeAskingTotal(pricedEntries));
   }
 
   async function loadAdminAccountsFromApi(authHeader) {
@@ -437,7 +479,11 @@ export default function App() {
       entries.length > 0
         ? entries.map((entry) => ({
             cardName: String(entry.cardName || entry.card_name || '').trim(),
-            quantity: Number(entry.quantity) || 1
+            quantity: Number(entry.quantity) || 1,
+            askingPriceCents:
+              entry.askingPriceCents === null || entry.askingPriceCents === undefined
+                ? null
+                : Number(entry.askingPriceCents)
           }))
         : parseCardEntries(cards.join('\n'));
 
@@ -518,9 +564,12 @@ export default function App() {
           return card;
         }
         const lineTotalUsd = card.unitUsd !== null ? card.unitUsd * quantity : null;
-        return { ...card, quantity, lineTotalUsd };
+        const askingLineTotalUsd =
+          card.askingUnitUsd !== null ? card.askingUnitUsd * quantity : null;
+        return { ...card, quantity, lineTotalUsd, askingLineTotalUsd };
       });
       setCardCostTotal(recomputeCostTotal(next));
+      setCardAskingTotal(recomputeAskingTotal(next));
 
       // Keep the textarea aligned with the current quantities.
       const nextText = next.map((card) => `${card.quantity} ${card.resolvedName || card.inputName}`).join('\n');
@@ -529,7 +578,26 @@ export default function App() {
     });
   }
 
-  async function handleSaveQuantities() {
+  function handleAskingPriceChange(index, nextValue) {
+    const askingPriceCents = parseDollarsToCents(nextValue);
+
+    setUploadedCards((previous) => {
+      const next = previous.map((card, i) => {
+        if (i !== index) {
+          return card;
+        }
+        const askingUnitUsd =
+          askingPriceCents === null ? null : Number(askingPriceCents) / 100;
+        const askingLineTotalUsd =
+          askingUnitUsd !== null ? askingUnitUsd * card.quantity : null;
+        return { ...card, askingPriceCents, askingUnitUsd, askingLineTotalUsd };
+      });
+      setCardAskingTotal(recomputeAskingTotal(next));
+      return next;
+    });
+  }
+
+  async function handleSaveList() {
     if (!loggedInUser || loggedInUser.role !== 'user') {
       setCardUploadFeedback('Log in with a user account to save a card list.');
       return;
@@ -544,7 +612,11 @@ export default function App() {
     const entries = uploadedCards
       .map((card) => ({
         cardName: String(card.resolvedName || card.inputName || '').trim(),
-        quantity: Number(card.quantity) || 1
+        quantity: Number(card.quantity) || 1,
+        askingPriceCents:
+          card.askingPriceCents === null || card.askingPriceCents === undefined
+            ? null
+            : Number(card.askingPriceCents)
       }))
       .filter((entry) => entry.cardName);
 
@@ -569,7 +641,9 @@ export default function App() {
         return;
       }
 
-      setCardUploadFeedback(`Saved quantities for ${entries.length} unique card${entries.length === 1 ? '' : 's'}.`);
+      setCardUploadFeedback(
+        `Saved ${entries.length} unique card${entries.length === 1 ? '' : 's'} (qty + asking price).`
+      );
     } catch (_error) {
       setCardUploadFeedback('Could not save card list right now.');
     }
@@ -693,8 +767,8 @@ export default function App() {
                   <div className="card-upload-results">
                     <h2>Uploaded Cards</h2>
                     <div className="dashboard-actions">
-                      <button type="button" onClick={handleSaveQuantities}>
-                        Save Quantities
+                      <button type="button" onClick={handleSaveList}>
+                        Save List
                       </button>
                     </div>
                     <table className="price-table">
@@ -704,6 +778,8 @@ export default function App() {
                           <th>Qty</th>
                           <th>TCGPlayer Low</th>
                           <th>Line Total</th>
+                          <th>Asking For</th>
+                          <th>Asking Total</th>
                           <th>Links / Status</th>
                         </tr>
                       </thead>
@@ -728,6 +804,22 @@ export default function App() {
                                 : 'N/A'}
                             </td>
                             <td>
+                              <input
+                                className="ask-input"
+                                type="number"
+                                min={0}
+                                step={0.01}
+                                placeholder="0.00"
+                                value={formatCents(card.askingPriceCents)}
+                                onChange={(event) => handleAskingPriceChange(index, event.target.value)}
+                              />
+                            </td>
+                            <td>
+                              {card.askingLineTotalUsd !== null
+                                ? `$${card.askingLineTotalUsd.toFixed(2)}`
+                                : 'N/A'}
+                            </td>
+                            <td>
                               {card.tcgUrl ? (
                                 <a href={card.tcgUrl} target="_blank" rel="noreferrer">
                                   TCGPlayer
@@ -745,6 +837,8 @@ export default function App() {
                         <tr>
                           <th colSpan={3}>Total</th>
                           <th>${cardCostTotal.toFixed(2)}</th>
+                          <th />
+                          <th>${cardAskingTotal.toFixed(2)}</th>
                           <th />
                         </tr>
                       </tfoot>

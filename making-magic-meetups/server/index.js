@@ -116,12 +116,19 @@ db.exec(`
     account_id INTEGER NOT NULL,
     card_name TEXT NOT NULL,
     quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+    asking_price_cents INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
     UNIQUE (account_id, card_name)
   );
 `);
+
+try {
+  db.exec(`ALTER TABLE account_card_items ADD COLUMN asking_price_cents INTEGER`);
+} catch (_error) {
+  // Column already exists; ignore migration error.
+}
 
 db.exec(`
   CREATE INDEX IF NOT EXISTS account_card_items_account_id_idx
@@ -142,19 +149,42 @@ const clearAccountCards = db.prepare(`
 `);
 
 const upsertAccountCard = db.prepare(`
-  INSERT INTO account_card_items (account_id, card_name, quantity)
-  VALUES (?, ?, ?)
+  INSERT INTO account_card_items (account_id, card_name, quantity, asking_price_cents)
+  VALUES (?, ?, ?, ?)
   ON CONFLICT(account_id, card_name) DO UPDATE SET
     quantity = excluded.quantity,
+    asking_price_cents = excluded.asking_price_cents,
     updated_at = CURRENT_TIMESTAMP
 `);
 
 const listAccountCards = db.prepare(`
-  SELECT card_name, quantity
+  SELECT card_name, quantity, asking_price_cents
   FROM account_card_items
   WHERE account_id = ?
   ORDER BY card_name COLLATE NOCASE ASC
 `);
+
+function parseAskingPriceCents(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const cents = Math.round(value * 100);
+    return cents >= 0 ? cents : null;
+  }
+
+  const normalized = String(value).trim().replace(/^\$/, '').replace(/,/g, '');
+  if (!normalized) {
+    return null;
+  }
+
+  const dollars = Number(normalized);
+  if (!Number.isFinite(dollars) || dollars < 0) {
+    return null;
+  }
+  return Math.round(dollars * 100);
+}
 
 function authenticateLogin(identifier, password) {
   if (identifier === adminUsername.toLowerCase() && password === adminPassword) {
@@ -335,7 +365,11 @@ app.get('/api/cards', (req, res) => {
 
   const entries = listAccountCards.all(user.id).map((row) => ({
     cardName: row.card_name,
-    quantity: row.quantity
+    quantity: row.quantity,
+    askingPriceCents:
+      row.asking_price_cents === null || row.asking_price_cents === undefined
+        ? null
+        : Number(row.asking_price_cents)
   }));
   const cards = [];
   for (const entry of entries) {
@@ -363,6 +397,7 @@ app.post('/api/cards', (req, res) => {
   for (const submitted of submittedCards) {
     let cardName = '';
     let quantity = 1;
+    let askingPriceCents = null;
 
     if (typeof submitted === 'string') {
       cardName = submitted.trim();
@@ -372,6 +407,9 @@ app.post('/api/cards', (req, res) => {
       if (!Number.isFinite(quantity) || quantity <= 0) {
         quantity = 1;
       }
+      askingPriceCents = parseAskingPriceCents(
+        submitted.askingPriceCents ?? submitted.askingPrice ?? submitted.asking_price
+      );
     }
 
     if (!cardName) {
@@ -382,8 +420,11 @@ app.post('/api/cards', (req, res) => {
     const existing = cardMap.get(normalized);
     if (existing) {
       existing.quantity += quantity;
+      if (askingPriceCents !== null) {
+        existing.askingPriceCents = askingPriceCents;
+      }
     } else {
-      cardMap.set(normalized, { cardName, quantity });
+      cardMap.set(normalized, { cardName, quantity, askingPriceCents });
     }
   }
 
@@ -401,7 +442,12 @@ app.post('/api/cards', (req, res) => {
   const saveCards = db.transaction((accountId, cardEntries) => {
     clearAccountCards.run(accountId);
     for (const entry of cardEntries) {
-      upsertAccountCard.run(accountId, entry.cardName, entry.quantity);
+      upsertAccountCard.run(
+        accountId,
+        entry.cardName,
+        entry.quantity,
+        entry.askingPriceCents ?? null
+      );
     }
   });
 
