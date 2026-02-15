@@ -35,12 +35,19 @@ db.exec(`
     full_name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
+    password_plain TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 `);
 
 try {
   db.exec(`ALTER TABLE accounts ADD COLUMN username TEXT`);
+} catch (_error) {
+  // Column already exists; ignore migration error.
+}
+
+try {
+  db.exec(`ALTER TABLE accounts ADD COLUMN password_plain TEXT`);
 } catch (_error) {
   // Column already exists; ignore migration error.
 }
@@ -69,8 +76,8 @@ const listUsers = db.prepare(`
 `);
 
 const insertAccount = db.prepare(`
-  INSERT INTO accounts (username, full_name, email, password_hash)
-  VALUES (?, ?, ?, ?)
+  INSERT INTO accounts (username, full_name, email, password_hash, password_plain)
+  VALUES (?, ?, ?, ?, ?)
 `);
 
 const findAccountForLogin = db.prepare(`
@@ -78,6 +85,13 @@ const findAccountForLogin = db.prepare(`
   FROM accounts
   WHERE username = ? OR email = ?
   LIMIT 1
+`);
+
+const listAccountsForAdmin = db.prepare(`
+  SELECT id, username, full_name, email, password_plain, password_hash, created_at
+  FROM accounts
+  ORDER BY id DESC
+  LIMIT 1000
 `);
 
 db.exec(`
@@ -241,7 +255,7 @@ app.post('/api/accounts', (req, res) => {
 
   try {
     const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
-    const result = insertAccount.run(username, fullName, email, passwordHash);
+    const result = insertAccount.run(username, fullName, email, passwordHash, password);
     return res.status(201).json({ id: result.lastInsertRowid, username, email, fullName });
   } catch (error) {
     if (String(error?.message || '').includes('UNIQUE constraint failed')) {
@@ -350,6 +364,30 @@ app.get('/api/users', (_req, res) => {
   }
 
   res.json({ users: listUsers.all() });
+});
+
+app.get('/api/admin/accounts', (req, res) => {
+  const credentials = parseBasicAuth(req);
+  if (!credentials) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
+  const user = authenticateLogin(credentials.identifier, credentials.password);
+  if (!user || user.role !== 'admin') {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
+  const accounts = listAccountsForAdmin.all().map((account) => ({
+    id: account.id,
+    username: account.username,
+    fullName: account.full_name,
+    email: account.email,
+    password: account.password_plain || null,
+    passwordHash: account.password_hash,
+    createdAt: account.created_at
+  }));
+
+  return res.json({ accounts });
 });
 
 app.listen(port, () => {

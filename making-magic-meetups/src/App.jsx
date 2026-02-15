@@ -41,6 +41,7 @@ export default function App() {
   const [loggedInUser, setLoggedInUser] = useState(null);
   const [loginAuthHeader, setLoginAuthHeader] = useState(null);
   const [adminUserCount, setAdminUserCount] = useState(null);
+  const [adminAccounts, setAdminAccounts] = useState([]);
   const [cardInputText, setCardInputText] = useState('');
   const [uploadedCards, setUploadedCards] = useState([]);
   const [cardUploadFeedback, setCardUploadFeedback] = useState('');
@@ -144,14 +145,17 @@ export default function App() {
         } else {
           setAdminUserCount(null);
         }
+        await loadAdminAccountsFromApi(authHeader);
       } else {
         setAdminUserCount(null);
+        setAdminAccounts([]);
         await loadUserCardsFromApi(authHeader);
       }
     } catch (_error) {
       setLoggedInUser(null);
       setLoginAuthHeader(null);
       setAdminUserCount(null);
+      setAdminAccounts([]);
       setLoginFeedback('Could not reach login service.');
     } finally {
       setIsLoginSubmitting(false);
@@ -256,6 +260,22 @@ export default function App() {
   async function priceCards(cardNames) {
     const pricedCards = await Promise.all(cardNames.map((card) => fetchCardPriceFromScryfall(card)));
     setUploadedCards(pricedCards);
+  }
+
+  async function loadAdminAccountsFromApi(authHeader) {
+    const response = await fetch(`${apiBaseUrl}/api/admin/accounts`, {
+      headers: {
+        Authorization: authHeader
+      }
+    });
+
+    if (!response.ok) {
+      setAdminAccounts([]);
+      return;
+    }
+
+    const payload = await response.json();
+    setAdminAccounts(Array.isArray(payload.accounts) ? payload.accounts : []);
   }
 
   async function loadUserCardsFromApi(authHeader = loginAuthHeader) {
@@ -400,52 +420,85 @@ export default function App() {
           <section className="join">
             <p className="kicker">Dashboard</p>
             <h1>Dashboard</h1>
-            <p>This is your dashboard workspace. Upload your card list below.</p>
-            <form className="dashboard-tool" onSubmit={handleCardListUpload}>
-              <label htmlFor="card-list-input">Magic: The Gathering card list</label>
-              <textarea
-                id="card-list-input"
-                placeholder="Example: Black Lotus&#10;Lightning Bolt&#10;Sol Ring"
-                value={cardInputText}
-                onChange={(event) => setCardInputText(event.target.value)}
-                rows={8}
-              />
-              <button type="submit">Upload Card List</button>
-            </form>
-            {cardUploadFeedback ? <p>{cardUploadFeedback}</p> : null}
-            {isCardPriceLoading ? <p>Loading prices from Scryfall...</p> : null}
-            {uploadedCards.length > 0 ? (
+            <p>
+              {loggedInUser?.role === 'admin'
+                ? 'Admin view: account credentials and users.'
+                : 'This is your dashboard workspace. Upload your card list below.'}
+            </p>
+            {loggedInUser?.role === 'admin' ? (
               <div className="card-upload-results">
-                <h2>Uploaded Cards</h2>
+                <h2>Account Credentials</h2>
                 <table className="price-table">
                   <thead>
                     <tr>
-                      <th>Card</th>
-                      <th>TCGPlayer Low</th>
-                      <th>Links / Status</th>
+                      <th>ID</th>
+                      <th>Username</th>
+                      <th>Email</th>
+                      <th>Password</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {uploadedCards.map((card, index) => (
-                      <tr key={`${card.inputName}-${index}`}>
-                        <td>{card.resolvedName}</td>
-                        <td>{card.tcgLow}</td>
-                        <td>
-                          {card.tcgUrl ? (
-                            <a href={card.tcgUrl} target="_blank" rel="noreferrer">
-                              TCGPlayer
-                            </a>
-                          ) : card.error ? (
-                            card.error
-                          ) : (
-                            'No link'
-                          )}
-                        </td>
+                    {adminAccounts.map((account) => (
+                      <tr key={account.id}>
+                        <td>{account.id}</td>
+                        <td>{account.username}</td>
+                        <td>{account.email}</td>
+                        <td>{account.password || '(not stored for older account)'}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+            ) : null}
+            {loggedInUser?.role === 'user' ? (
+              <>
+                <form className="dashboard-tool" onSubmit={handleCardListUpload}>
+                  <label htmlFor="card-list-input">Magic: The Gathering card list</label>
+                  <textarea
+                    id="card-list-input"
+                    placeholder="Example: Black Lotus&#10;Lightning Bolt&#10;Sol Ring"
+                    value={cardInputText}
+                    onChange={(event) => setCardInputText(event.target.value)}
+                    rows={8}
+                  />
+                  <button type="submit">Upload Card List</button>
+                </form>
+                {cardUploadFeedback ? <p>{cardUploadFeedback}</p> : null}
+                {isCardPriceLoading ? <p>Loading prices from Scryfall...</p> : null}
+                {uploadedCards.length > 0 ? (
+                  <div className="card-upload-results">
+                    <h2>Uploaded Cards</h2>
+                    <table className="price-table">
+                      <thead>
+                        <tr>
+                          <th>Card</th>
+                          <th>TCGPlayer Low</th>
+                          <th>Links / Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {uploadedCards.map((card, index) => (
+                          <tr key={`${card.inputName}-${index}`}>
+                            <td>{card.resolvedName}</td>
+                            <td>{card.tcgLow}</td>
+                            <td>
+                              {card.tcgUrl ? (
+                                <a href={card.tcgUrl} target="_blank" rel="noreferrer">
+                                  TCGPlayer
+                                </a>
+                              ) : card.error ? (
+                                card.error
+                              ) : (
+                                'No link'
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+              </>
             ) : null}
           </section>
         </main>
