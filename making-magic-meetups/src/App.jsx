@@ -39,6 +39,7 @@ export default function App() {
   const [loginFeedback, setLoginFeedback] = useState('');
   const [isLoginSubmitting, setIsLoginSubmitting] = useState(false);
   const [loggedInUser, setLoggedInUser] = useState(null);
+  const [loginAuthHeader, setLoginAuthHeader] = useState(null);
   const [adminUserCount, setAdminUserCount] = useState(null);
   const [cardInputText, setCardInputText] = useState('');
   const [uploadedCards, setUploadedCards] = useState([]);
@@ -101,6 +102,9 @@ export default function App() {
     event.preventDefault();
     setLoginFeedback('');
     setIsLoginSubmitting(true);
+    const trimmedIdentifier = loginIdentifier.trim();
+    const submittedPassword = loginPassword;
+    const authHeader = `Basic ${btoa(`${trimmedIdentifier}:${submittedPassword}`)}`;
 
     try {
       const loginResponse = await fetch(`${apiBaseUrl}/api/login`, {
@@ -109,27 +113,28 @@ export default function App() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          identifier: loginIdentifier,
-          password: loginPassword
+          identifier: trimmedIdentifier,
+          password: submittedPassword
         })
       });
 
       const loginPayload = await loginResponse.json();
       if (!loginResponse.ok) {
         setLoggedInUser(null);
+        setLoginAuthHeader(null);
         setAdminUserCount(null);
         setLoginFeedback(loginPayload.error || 'Login failed.');
         return;
       }
 
       setLoggedInUser(loginPayload.user || null);
+      setLoginAuthHeader(authHeader);
       setLoginFeedback(`Welcome, ${loginPayload.user?.username || 'user'}.`);
 
       if (loginPayload.user?.role === 'admin') {
-        const auth = btoa(`${loginIdentifier}:${loginPassword}`);
         const usersResponse = await fetch(`${apiBaseUrl}/api/users`, {
           headers: {
-            Authorization: `Basic ${auth}`
+            Authorization: authHeader
           }
         });
 
@@ -141,10 +146,11 @@ export default function App() {
         }
       } else {
         setAdminUserCount(null);
-        await loadUserCardsFromApi();
+        await loadUserCardsFromApi(authHeader);
       }
     } catch (_error) {
       setLoggedInUser(null);
+      setLoginAuthHeader(null);
       setAdminUserCount(null);
       setLoginFeedback('Could not reach login service.');
     } finally {
@@ -247,20 +253,12 @@ export default function App() {
       .filter(Boolean);
   }
 
-  function getLoginBasicAuthHeader() {
-    if (!loginIdentifier || !loginPassword) {
-      return null;
-    }
-    return `Basic ${btoa(`${loginIdentifier}:${loginPassword}`)}`;
-  }
-
   async function priceCards(cardNames) {
     const pricedCards = await Promise.all(cardNames.map((card) => fetchCardPriceFromScryfall(card)));
     setUploadedCards(pricedCards);
   }
 
-  async function loadUserCardsFromApi() {
-    const authHeader = getLoginBasicAuthHeader();
+  async function loadUserCardsFromApi(authHeader = loginAuthHeader) {
     if (!authHeader) {
       setUploadedCards([]);
       return;
@@ -305,7 +303,7 @@ export default function App() {
       return;
     }
 
-    const authHeader = getLoginBasicAuthHeader();
+    const authHeader = loginAuthHeader;
     if (!authHeader) {
       setCardUploadFeedback('Please log in again to continue.');
       return;
