@@ -63,7 +63,7 @@ export default function App() {
       <header className="topbar">
         <p className="logo">Making Magic Meetups</p>
         <nav className="topnav">
-          <a href="#events">Events</a>
+          <a href="#events">Login</a>
           <a href="#join">Join</a>
         </nav>
       </header>
