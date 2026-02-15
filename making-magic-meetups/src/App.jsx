@@ -40,7 +40,7 @@ export default function App() {
   const [isLoginSubmitting, setIsLoginSubmitting] = useState(false);
   const [loggedInUser, setLoggedInUser] = useState(null);
   const [loginAuthHeader, setLoginAuthHeader] = useState(null);
-  const [adminUserCount, setAdminUserCount] = useState(null);
+  const [adminAccountCount, setAdminAccountCount] = useState(null);
   const [adminAccounts, setAdminAccounts] = useState([]);
   const [cardInputText, setCardInputText] = useState('');
   const [uploadedCards, setUploadedCards] = useState([]);
@@ -123,7 +123,7 @@ export default function App() {
       if (!loginResponse.ok) {
         setLoggedInUser(null);
         setLoginAuthHeader(null);
-        setAdminUserCount(null);
+        setAdminAccountCount(null);
         setLoginFeedback(loginPayload.error || 'Login failed.');
         return;
       }
@@ -133,28 +133,16 @@ export default function App() {
       setLoginFeedback(`Welcome, ${loginPayload.user?.username || 'user'}.`);
 
       if (loginPayload.user?.role === 'admin') {
-        const usersResponse = await fetch(`${apiBaseUrl}/api/users`, {
-          headers: {
-            Authorization: authHeader
-          }
-        });
-
-        if (usersResponse.ok) {
-          const usersPayload = await usersResponse.json();
-          setAdminUserCount(usersPayload.users?.length ?? 0);
-        } else {
-          setAdminUserCount(null);
-        }
         await loadAdminAccountsFromApi(authHeader);
       } else {
-        setAdminUserCount(null);
+        setAdminAccountCount(null);
         setAdminAccounts([]);
         await loadUserCardsFromApi(authHeader);
       }
     } catch (_error) {
       setLoggedInUser(null);
       setLoginAuthHeader(null);
-      setAdminUserCount(null);
+      setAdminAccountCount(null);
       setAdminAccounts([]);
       setLoginFeedback('Could not reach login service.');
     } finally {
@@ -271,11 +259,14 @@ export default function App() {
 
     if (!response.ok) {
       setAdminAccounts([]);
+      setAdminAccountCount(null);
       return;
     }
 
     const payload = await response.json();
-    setAdminAccounts(Array.isArray(payload.accounts) ? payload.accounts : []);
+    const accounts = Array.isArray(payload.accounts) ? payload.accounts : [];
+    setAdminAccounts(accounts);
+    setAdminAccountCount(accounts.length);
   }
 
   async function loadUserCardsFromApi(authHeader = loginAuthHeader) {
@@ -393,8 +384,10 @@ export default function App() {
           Signed in as {loggedInUser.username} ({loggedInUser.role})
         </p>
       ) : null}
-      {loggedInUser?.role === 'admin' && adminUserCount !== null ? (
-        <p className="top-login-feedback">Admin access: {adminUserCount} users in database.</p>
+      {loggedInUser?.role === 'admin' && adminAccountCount !== null ? (
+        <p className="top-login-feedback">
+          Admin access: {adminAccountCount} accounts in database.
+        </p>
       ) : null}
     </div>
   );
