@@ -109,21 +109,50 @@ db.exec(`
   ON account_cards (account_id)
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS account_card_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id INTEGER NOT NULL,
+    card_name TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+    UNIQUE (account_id, card_name)
+  );
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS account_card_items_account_id_idx
+  ON account_card_items (account_id)
+`);
+
+db.exec(`
+  INSERT INTO account_card_items (account_id, card_name, quantity)
+  SELECT account_id, card_name, COUNT(*) AS quantity
+  FROM account_cards
+  GROUP BY account_id, card_name
+  ON CONFLICT(account_id, card_name) DO NOTHING
+`);
+
 const clearAccountCards = db.prepare(`
-  DELETE FROM account_cards
+  DELETE FROM account_card_items
   WHERE account_id = ?
 `);
 
-const insertAccountCard = db.prepare(`
-  INSERT INTO account_cards (account_id, card_name)
-  VALUES (?, ?)
+const upsertAccountCard = db.prepare(`
+  INSERT INTO account_card_items (account_id, card_name, quantity)
+  VALUES (?, ?, ?)
+  ON CONFLICT(account_id, card_name) DO UPDATE SET
+    quantity = excluded.quantity,
+    updated_at = CURRENT_TIMESTAMP
 `);
 
 const listAccountCards = db.prepare(`
-  SELECT card_name
-  FROM account_cards
+  SELECT card_name, quantity
+  FROM account_card_items
   WHERE account_id = ?
-  ORDER BY id ASC
+  ORDER BY card_name COLLATE NOCASE ASC
 `);
 
 function authenticateLogin(identifier, password) {
@@ -298,8 +327,17 @@ app.get('/api/cards', (req, res) => {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
 
-  const cards = listAccountCards.all(user.id).map((row) => row.card_name);
-  return res.json({ cards });
+  const entries = listAccountCards.all(user.id).map((row) => ({
+    cardName: row.card_name,
+    quantity: row.quantity
+  }));
+  const cards = [];
+  for (const entry of entries) {
+    for (let i = 0; i < entry.quantity; i += 1) {
+      cards.push(entry.cardName);
+    }
+  }
+  return res.json({ cards, entries, totalCards: cards.length });
 });
 
 app.post('/api/cards', (req, res) => {
@@ -314,25 +352,67 @@ app.post('/api/cards', (req, res) => {
   }
 
   const submittedCards = Array.isArray(req.body?.cards) ? req.body.cards : [];
-  const cards = submittedCards.map((card) => String(card).trim()).filter(Boolean);
+  const cardMap = new Map();
 
-  if (cards.length === 0) {
+  for (const submitted of submittedCards) {
+    let cardName = '';
+    let quantity = 1;
+
+    if (typeof submitted === 'string') {
+      cardName = submitted.trim();
+    } else if (submitted && typeof submitted === 'object') {
+      cardName = String(submitted.cardName || submitted.name || '').trim();
+      quantity = Number(submitted.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        quantity = 1;
+      }
+    }
+
+    if (!cardName) {
+      continue;
+    }
+
+    const normalized = cardName.toLowerCase();
+    const existing = cardMap.get(normalized);
+    if (existing) {
+      existing.quantity += quantity;
+    } else {
+      cardMap.set(normalized, { cardName, quantity });
+    }
+  }
+
+  const entries = Array.from(cardMap.values());
+  const totalCards = entries.reduce((sum, entry) => sum + entry.quantity, 0);
+
+  if (entries.length === 0) {
     return res.status(400).json({ error: 'Please provide at least one card.' });
   }
 
-  if (cards.length > 1000) {
-    return res.status(400).json({ error: 'Card list is too large (max 1000).' });
+  if (entries.length > 1000 || totalCards > 5000) {
+    return res.status(400).json({ error: 'Card list is too large (max 1000 unique / 5000 total).' });
   }
 
-  const saveCards = db.transaction((accountId, cardNames) => {
+  const saveCards = db.transaction((accountId, cardEntries) => {
     clearAccountCards.run(accountId);
-    for (const cardName of cardNames) {
-      insertAccountCard.run(accountId, cardName);
+    for (const entry of cardEntries) {
+      upsertAccountCard.run(accountId, entry.cardName, entry.quantity);
     }
   });
 
-  saveCards(user.id, cards);
-  return res.json({ ok: true, count: cards.length, cards });
+  saveCards(user.id, entries);
+  const expandedCards = [];
+  for (const entry of entries) {
+    for (let i = 0; i < entry.quantity; i += 1) {
+      expandedCards.push(entry.cardName);
+    }
+  }
+  return res.json({
+    ok: true,
+    uniqueCount: entries.length,
+    totalCount: totalCards,
+    cards: expandedCards,
+    entries
+  });
 });
 
 app.get('/api/users', (_req, res) => {
