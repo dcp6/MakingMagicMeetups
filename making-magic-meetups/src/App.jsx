@@ -43,6 +43,7 @@ export default function App() {
   const [cardInputText, setCardInputText] = useState('');
   const [uploadedCards, setUploadedCards] = useState([]);
   const [cardUploadFeedback, setCardUploadFeedback] = useState('');
+  const [isCardPriceLoading, setIsCardPriceLoading] = useState(false);
 
   useEffect(() => {
     function syncRouteFromHash() {
@@ -140,6 +141,7 @@ export default function App() {
         }
       } else {
         setAdminUserCount(null);
+        await loadUserCardsFromApi();
       }
     } catch (_error) {
       setLoggedInUser(null);
@@ -187,12 +189,110 @@ export default function App() {
     }
   }
 
-  function handleCardListUpload(event) {
-    event.preventDefault();
-    const cards = cardInputText
+  async function fetchCardPriceFromScryfall(cardName) {
+    const encoded = encodeURIComponent(cardName);
+    const endpoints = [
+      `https://api.scryfall.com/cards/named?exact=${encoded}`,
+      `https://api.scryfall.com/cards/named?fuzzy=${encoded}`
+    ];
+
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(endpoint);
+        if (!response.ok) {
+          if (response.status === 404) {
+            continue;
+          }
+          return {
+            inputName: cardName,
+            resolvedName: cardName,
+            tcgLow: 'N/A',
+            tcgUrl: null,
+            error: 'Lookup failed'
+          };
+        }
+
+        const data = await response.json();
+        return {
+          inputName: cardName,
+          resolvedName: data.name || cardName,
+          tcgLow: data.prices?.usd ? `$${data.prices.usd}` : 'N/A',
+          tcgUrl: data.purchase_uris?.tcgplayer || null,
+          error: null
+        };
+      } catch (_error) {
+        return {
+          inputName: cardName,
+          resolvedName: cardName,
+          tcgLow: 'N/A',
+          tcgUrl: null,
+          error: 'Network error'
+        };
+      }
+    }
+
+    return {
+      inputName: cardName,
+      resolvedName: cardName,
+      tcgLow: 'N/A',
+      tcgUrl: null,
+      error: 'Card not found'
+    };
+  }
+
+  function parseCardInput(text) {
+    return text
       .split(/[\n,]/)
       .map((card) => card.trim())
       .filter(Boolean);
+  }
+
+  function getLoginBasicAuthHeader() {
+    if (!loginIdentifier || !loginPassword) {
+      return null;
+    }
+    return `Basic ${btoa(`${loginIdentifier}:${loginPassword}`)}`;
+  }
+
+  async function priceCards(cardNames) {
+    const pricedCards = await Promise.all(cardNames.map((card) => fetchCardPriceFromScryfall(card)));
+    setUploadedCards(pricedCards);
+  }
+
+  async function loadUserCardsFromApi() {
+    const authHeader = getLoginBasicAuthHeader();
+    if (!authHeader) {
+      setUploadedCards([]);
+      return;
+    }
+
+    const response = await fetch(`${apiBaseUrl}/api/cards`, {
+      headers: {
+        Authorization: authHeader
+      }
+    });
+
+    if (!response.ok) {
+      setUploadedCards([]);
+      return;
+    }
+
+    const payload = await response.json();
+    const cards = Array.isArray(payload.cards) ? payload.cards : [];
+    if (cards.length === 0) {
+      setUploadedCards([]);
+      return;
+    }
+
+    setCardInputText(cards.join('\n'));
+    setIsCardPriceLoading(true);
+    await priceCards(cards);
+    setIsCardPriceLoading(false);
+  }
+
+  async function handleCardListUpload(event) {
+    event.preventDefault();
+    const cards = parseCardInput(cardInputText);
 
     if (cards.length === 0) {
       setUploadedCards([]);
@@ -200,8 +300,44 @@ export default function App() {
       return;
     }
 
-    setUploadedCards(cards);
-    setCardUploadFeedback(`Loaded ${cards.length} card${cards.length === 1 ? '' : 's'}.`);
+    if (!loggedInUser || loggedInUser.role !== 'user') {
+      setCardUploadFeedback('Log in with a user account to save a card list.');
+      return;
+    }
+
+    const authHeader = getLoginBasicAuthHeader();
+    if (!authHeader) {
+      setCardUploadFeedback('Please log in again to continue.');
+      return;
+    }
+
+    setIsCardPriceLoading(true);
+    try {
+      const saveResponse = await fetch(`${apiBaseUrl}/api/cards`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: authHeader
+        },
+        body: JSON.stringify({ cards })
+      });
+
+      const savePayload = await saveResponse.json();
+      if (!saveResponse.ok) {
+        setCardUploadFeedback(savePayload.error || 'Could not save your card list.');
+        setIsCardPriceLoading(false);
+        return;
+      }
+
+      await priceCards(cards);
+      setCardUploadFeedback(
+        `Saved ${cards.length} card${cards.length === 1 ? '' : 's'} to ${loggedInUser.username}'s list.`
+      );
+    } catch (_error) {
+      setCardUploadFeedback('Could not save card list right now.');
+    } finally {
+      setIsCardPriceLoading(false);
+    }
   }
 
   const headerLogin = (
@@ -279,14 +415,38 @@ export default function App() {
               <button type="submit">Upload Card List</button>
             </form>
             {cardUploadFeedback ? <p>{cardUploadFeedback}</p> : null}
+            {isCardPriceLoading ? <p>Loading prices from Scryfall...</p> : null}
             {uploadedCards.length > 0 ? (
               <div className="card-upload-results">
                 <h2>Uploaded Cards</h2>
-                <ul>
-                  {uploadedCards.map((card, index) => (
-                    <li key={`${card}-${index}`}>{card}</li>
-                  ))}
-                </ul>
+                <table className="price-table">
+                  <thead>
+                    <tr>
+                      <th>Card</th>
+                      <th>TCGPlayer Low</th>
+                      <th>Links / Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {uploadedCards.map((card, index) => (
+                      <tr key={`${card.inputName}-${index}`}>
+                        <td>{card.resolvedName}</td>
+                        <td>{card.tcgLow}</td>
+                        <td>
+                          {card.tcgUrl ? (
+                            <a href={card.tcgUrl} target="_blank" rel="noreferrer">
+                              TCGPlayer
+                            </a>
+                          ) : card.error ? (
+                            card.error
+                          ) : (
+                            'No link'
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             ) : null}
           </section>

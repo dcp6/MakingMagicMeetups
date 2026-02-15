@@ -80,6 +80,89 @@ const findAccountForLogin = db.prepare(`
   LIMIT 1
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS account_cards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id INTEGER NOT NULL,
+    card_name TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+  );
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS account_cards_account_id_idx
+  ON account_cards (account_id)
+`);
+
+const clearAccountCards = db.prepare(`
+  DELETE FROM account_cards
+  WHERE account_id = ?
+`);
+
+const insertAccountCard = db.prepare(`
+  INSERT INTO account_cards (account_id, card_name)
+  VALUES (?, ?)
+`);
+
+const listAccountCards = db.prepare(`
+  SELECT card_name
+  FROM account_cards
+  WHERE account_id = ?
+  ORDER BY id ASC
+`);
+
+function authenticateLogin(identifier, password) {
+  if (identifier === adminUsername.toLowerCase() && password === adminPassword) {
+    return {
+      id: 0,
+      username: adminUsername,
+      fullName: 'Administrator',
+      email: `${adminUsername}@local`,
+      role: 'admin'
+    };
+  }
+
+  const account = findAccountForLogin.get(identifier, identifier);
+  const providedHash = crypto.createHash('sha256').update(password).digest('hex');
+
+  if (!account || account.password_hash !== providedHash) {
+    return null;
+  }
+
+  return {
+    id: account.id,
+    username: account.username,
+    fullName: account.full_name,
+    email: account.email,
+    role: 'user'
+  };
+}
+
+function parseBasicAuth(req) {
+  const basicAuth = String(req.header('authorization') || '');
+  const basicPrefix = 'Basic ';
+  if (!basicAuth.startsWith(basicPrefix)) {
+    return null;
+  }
+
+  try {
+    const decoded = Buffer.from(basicAuth.slice(basicPrefix.length), 'base64').toString('utf8');
+    const separatorIndex = decoded.indexOf(':');
+    if (separatorIndex === -1) {
+      return null;
+    }
+    const identifier = decoded.slice(0, separatorIndex).trim().toLowerCase();
+    const password = decoded.slice(separatorIndex + 1);
+    if (!identifier || !password) {
+      return null;
+    }
+    return { identifier, password };
+  } catch (_error) {
+    return null;
+  }
+}
+
 const app = express();
 app.use(
   cors({
@@ -179,36 +262,63 @@ app.post('/api/login', (req, res) => {
     return res.status(400).json({ error: 'Please provide username/email and password.' });
   }
 
-  if (identifier === adminUsername.toLowerCase() && password === adminPassword) {
-    return res.json({
-      ok: true,
-      user: {
-        id: 0,
-        username: adminUsername,
-        fullName: 'Administrator',
-        email: `${adminUsername}@local`,
-        role: 'admin'
-      }
-    });
-  }
-
-  const account = findAccountForLogin.get(identifier, identifier);
-  const providedHash = crypto.createHash('sha256').update(password).digest('hex');
-
-  if (!account || account.password_hash !== providedHash) {
+  const user = authenticateLogin(identifier, password);
+  if (!user) {
     return res.status(401).json({ error: 'Invalid login credentials.' });
   }
 
   return res.json({
     ok: true,
-    user: {
-      id: account.id,
-      username: account.username,
-      fullName: account.full_name,
-      email: account.email,
-      role: 'user'
+    user
+  });
+});
+
+app.get('/api/cards', (req, res) => {
+  const credentials = parseBasicAuth(req);
+  if (!credentials) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
+  const user = authenticateLogin(credentials.identifier, credentials.password);
+  if (!user || user.role !== 'user') {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
+  const cards = listAccountCards.all(user.id).map((row) => row.card_name);
+  return res.json({ cards });
+});
+
+app.post('/api/cards', (req, res) => {
+  const credentials = parseBasicAuth(req);
+  if (!credentials) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
+  const user = authenticateLogin(credentials.identifier, credentials.password);
+  if (!user || user.role !== 'user') {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
+  const submittedCards = Array.isArray(req.body?.cards) ? req.body.cards : [];
+  const cards = submittedCards.map((card) => String(card).trim()).filter(Boolean);
+
+  if (cards.length === 0) {
+    return res.status(400).json({ error: 'Please provide at least one card.' });
+  }
+
+  if (cards.length > 1000) {
+    return res.status(400).json({ error: 'Card list is too large (max 1000).' });
+  }
+
+  const saveCards = db.transaction((accountId, cardNames) => {
+    clearAccountCards.run(accountId);
+    for (const cardName of cardNames) {
+      insertAccountCard.run(accountId, cardName);
     }
   });
+
+  saveCards(user.id, cards);
+  return res.json({ ok: true, count: cards.length, cards });
 });
 
 app.get('/api/users', (_req, res) => {
