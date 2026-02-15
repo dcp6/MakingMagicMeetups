@@ -1,5 +1,5 @@
 import React from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const configuredApiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || '').trim();
 const sessionStorageKey = 'making_magic_meetups_session_v1';
@@ -24,6 +24,7 @@ const events = [
 ];
 
 export default function App() {
+  const isDetectingApiRef = useRef(false);
   const [apiBaseUrl, setApiBaseUrl] = useState(() => {
     if (import.meta.env.DEV) {
       return 'http://localhost:8787';
@@ -120,24 +121,49 @@ export default function App() {
     }
   }
 
-  useEffect(() => {
+  async function autoDetectApiBaseUrl() {
     if (import.meta.env.DEV) {
       return;
     }
-    if (configuredApiBaseUrl) {
+    if (isDetectingApiRef.current) {
       return;
     }
+    isDetectingApiRef.current = true;
 
-    const candidates = [
-      'https://makingmagicmeetups.onrender.com',
-      'https://makingmagicmeetups-api.onrender.com'
-    ];
+    try {
+      let stored = '';
+      try {
+        stored = String(window.localStorage.getItem(apiBaseStorageKey) || '').trim();
+      } catch (_error) {
+        stored = '';
+      }
 
-    (async () => {
+      const candidates = [
+        apiBaseUrl,
+        configuredApiBaseUrl,
+        stored,
+        'https://makingmagicmeetups.onrender.com',
+        'https://makingmagicmeetups-api.onrender.com'
+      ]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+
+      const seen = new Set();
+      const uniqueCandidates = [];
       for (const candidate of candidates) {
+        if (seen.has(candidate)) {
+          continue;
+        }
+        seen.add(candidate);
+        uniqueCandidates.push(candidate);
+      }
+
+      for (const candidate of uniqueCandidates) {
         const result = await probeApiHealth(candidate);
         if (result.ok) {
-          setApiBaseUrl(candidate);
+          if (candidate !== apiBaseUrl) {
+            setApiBaseUrl(candidate);
+          }
           try {
             window.localStorage.setItem(apiBaseStorageKey, candidate);
           } catch (_error) {
@@ -146,7 +172,13 @@ export default function App() {
           return;
         }
       }
-    })();
+    } finally {
+      isDetectingApiRef.current = false;
+    }
+  }
+
+  useEffect(() => {
+    autoDetectApiBaseUrl();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -156,8 +188,12 @@ export default function App() {
       const result = await probeApiHealth(apiBaseUrl);
       setLoginServiceLastStatusCode(result.status);
       setLoginServiceStatus(result.ok ? 'ok' : 'bad');
+      if (!result.ok) {
+        await autoDetectApiBaseUrl();
+      }
     } catch (_error) {
       setLoginServiceStatus('bad');
+      await autoDetectApiBaseUrl();
     } finally {
       setLoginServiceLastCheckedAt(Date.now());
     }
