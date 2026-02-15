@@ -234,6 +234,25 @@ function parseAskingPriceCents(value) {
   return Math.round(dollarsValue * 100);
 }
 
+function parseAskingPriceCentsFromSubmittedCard(submitted) {
+  // Preferred: client sends cents directly.
+  if (submitted && Object.prototype.hasOwnProperty.call(submitted, 'askingPriceCents')) {
+    const raw = submitted.askingPriceCents;
+    if (raw === null || raw === undefined || raw === '') {
+      return null;
+    }
+    const cents = typeof raw === 'string' ? Number(raw) : raw;
+    if (!Number.isFinite(cents)) {
+      return null;
+    }
+    const rounded = Math.round(cents);
+    return rounded >= 0 ? rounded : null;
+  }
+
+  // Back-compat: accept dollars in askingPrice / asking_price.
+  return parseAskingPriceCents(submitted?.askingPrice ?? submitted?.asking_price);
+}
+
 function authenticateLogin(identifier, password) {
   if (identifier === adminUsername.toLowerCase() && password === adminPassword) {
     return {
@@ -467,9 +486,7 @@ app.post('/api/cards', (req, res) => {
       if (!Number.isFinite(quantity) || quantity <= 0) {
         quantity = 1;
       }
-      askingPriceCents = parseAskingPriceCents(
-        submitted.askingPriceCents ?? submitted.askingPrice ?? submitted.asking_price
-      );
+      askingPriceCents = parseAskingPriceCentsFromSubmittedCard(submitted);
       scryfallId = submitted.scryfallId ? String(submitted.scryfallId).trim() : null;
       setCode = submitted.setCode ? String(submitted.setCode).trim() : null;
       setName = submitted.setName ? String(submitted.setName).trim() : null;
