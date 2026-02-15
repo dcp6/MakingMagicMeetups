@@ -12,6 +12,8 @@ const dbPath = path.join(dbDir, 'users.db');
 const port = process.env.PORT ? Number(process.env.PORT) : 8787;
 const frontendOrigin = process.env.FRONTEND_ORIGIN || 'https://dcp6.github.io';
 const adminApiKey = process.env.ADMIN_API_KEY || '';
+const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+const adminPassword = process.env.ADMIN_PASSWORD || 'test123';
 
 fs.mkdirSync(dbDir, { recursive: true });
 
@@ -59,6 +61,17 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
 
+app.post('/api/admin/login', (req, res) => {
+  const username = String(req.body?.username || '');
+  const password = String(req.body?.password || '');
+
+  if (username === adminUsername && password === adminPassword) {
+    return res.json({ ok: true });
+  }
+
+  return res.status(401).json({ error: 'Invalid admin credentials.' });
+});
+
 app.post('/api/users', (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
 
@@ -79,6 +92,24 @@ app.post('/api/users', (req, res) => {
 });
 
 app.get('/api/users', (_req, res) => {
+  const basicAuth = String(_req.header('authorization') || '');
+  const basicPrefix = 'Basic ';
+  let basicAuthorized = false;
+
+  if (basicAuth.startsWith(basicPrefix)) {
+    try {
+      const decoded = Buffer.from(basicAuth.slice(basicPrefix.length), 'base64').toString('utf8');
+      const [username, password] = decoded.split(':');
+      basicAuthorized = username === adminUsername && password === adminPassword;
+    } catch (_error) {
+      basicAuthorized = false;
+    }
+  }
+
+  if (basicAuthorized) {
+    return res.json({ users: listUsers.all() });
+  }
+
   if (!adminApiKey) {
     return res.status(404).json({ error: 'Not found.' });
   }

@@ -27,6 +27,12 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [adminName, setAdminName] = useState('admin');
+  const [adminPass, setAdminPass] = useState('test123');
+  const [adminError, setAdminError] = useState('');
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [isAdminLoading, setIsAdminLoading] = useState(false);
+  const [isAdminAuthed, setIsAdminAuthed] = useState(false);
 
   async function handleJoinSubmit(event) {
     event.preventDefault();
@@ -58,12 +64,64 @@ export default function App() {
     }
   }
 
+  async function loadAdminUsers(username, password) {
+    const auth = btoa(`${username}:${password}`);
+    const response = await fetch(`${apiBaseUrl}/api/users`, {
+      headers: {
+        Authorization: `Basic ${auth}`
+      }
+    });
+
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || 'Failed to load users.');
+    }
+
+    setAdminUsers(payload.users || []);
+  }
+
+  async function handleAdminLogin(event) {
+    event.preventDefault();
+    setAdminError('');
+    setIsAdminLoading(true);
+
+    try {
+      const loginResponse = await fetch(`${apiBaseUrl}/api/admin/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          username: adminName,
+          password: adminPass
+        })
+      });
+
+      const loginPayload = await loginResponse.json();
+      if (!loginResponse.ok) {
+        setIsAdminAuthed(false);
+        setAdminUsers([]);
+        setAdminError(loginPayload.error || 'Login failed.');
+        return;
+      }
+
+      setIsAdminAuthed(true);
+      await loadAdminUsers(adminName, adminPass);
+    } catch (_error) {
+      setIsAdminAuthed(false);
+      setAdminUsers([]);
+      setAdminError('Could not reach admin API.');
+    } finally {
+      setIsAdminLoading(false);
+    }
+  }
+
   return (
     <div className="page">
       <header className="topbar">
         <p className="logo">Making Magic Meetups</p>
         <nav className="topnav">
-          <a href="#events">Login</a>
+          <a href="#admin">Login</a>
           <a href="#join">Join</a>
         </nav>
       </header>
@@ -116,6 +174,44 @@ export default function App() {
             </button>
           </form>
           {feedback ? <p>{feedback}</p> : null}
+        </section>
+
+        <section className="join" id="admin">
+          <h2>Admin Access</h2>
+          <p>Use admin credentials to view subscriber records.</p>
+          <form className="join-form" onSubmit={handleAdminLogin}>
+            <label htmlFor="admin-username" className="sr-only">
+              Username
+            </label>
+            <input
+              id="admin-username"
+              type="text"
+              placeholder="username"
+              value={adminName}
+              onChange={(event) => setAdminName(event.target.value)}
+              required
+            />
+            <label htmlFor="admin-password" className="sr-only">
+              Password
+            </label>
+            <input
+              id="admin-password"
+              type="password"
+              placeholder="password"
+              value={adminPass}
+              onChange={(event) => setAdminPass(event.target.value)}
+              required
+            />
+            <button type="submit" disabled={isAdminLoading}>
+              {isAdminLoading ? 'Checking...' : 'Admin Login'}
+            </button>
+          </form>
+          {adminError ? <p>{adminError}</p> : null}
+          {isAdminAuthed ? (
+            <p>
+              Logged in. Users in database: <strong>{adminUsers.length}</strong>
+            </p>
+          ) : null}
         </section>
       </main>
     </div>
