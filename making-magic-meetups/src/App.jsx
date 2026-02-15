@@ -444,6 +444,11 @@ export default function App() {
     const pricedUnique = await Promise.all(entries.map((entry) => fetchCardFromScryfall(entry)));
     const pricedEntries = pricedUnique.map((priced, index) => {
       const quantity = entries[index]?.quantity ?? 1;
+      const askingQuantityRaw = entries[index]?.askingQuantity ?? quantity;
+      const askingQuantity =
+        Number.isFinite(Number(askingQuantityRaw)) && Number(askingQuantityRaw) > 0
+          ? Math.max(1, Math.min(quantity, Math.floor(Number(askingQuantityRaw))))
+          : quantity;
       const unitUsd = parseUsdPrice(priced.tcgLow);
       const askingPriceCents = entries[index]?.askingPriceCents ?? null;
       const scryfallId = priced.scryfallId ?? entries[index]?.scryfallId ?? null;
@@ -460,11 +465,12 @@ export default function App() {
       return {
         ...priced,
         quantity,
+        askingQuantity,
         unitUsd,
         lineTotalUsd: unitUsd !== null ? unitUsd * quantity : null,
         askingPriceCents,
         askingInput: formatCents(askingPriceCents),
-        askingLineTotalUsd: askingUnitUsd !== null ? askingUnitUsd * quantity : null,
+        askingLineTotalUsd: askingUnitUsd !== null ? askingUnitUsd * askingQuantity : null,
         scryfallId,
         setCode,
         setName,
@@ -523,6 +529,10 @@ export default function App() {
         ? entries.map((entry) => ({
             cardName: String(entry.cardName || entry.card_name || '').trim(),
             quantity: Number(entry.quantity) || 1,
+            askingQuantity:
+              entry.askingQuantity === null || entry.askingQuantity === undefined
+                ? null
+                : Number(entry.askingQuantity),
             askingPriceCents:
               entry.askingPriceCents === null || entry.askingPriceCents === undefined
                 ? null
@@ -613,13 +623,14 @@ export default function App() {
           return card;
         }
         const lineTotalUsd = card.unitUsd !== null ? card.unitUsd * quantity : null;
+        const askingQuantity = Math.min(card.askingQuantity ?? quantity, quantity);
         const askingUnitUsd =
           card.askingPriceCents === null || card.askingPriceCents === undefined
             ? null
             : Number(card.askingPriceCents) / 100;
         const askingLineTotalUsd =
-          askingUnitUsd !== null ? askingUnitUsd * quantity : null;
-        return { ...card, quantity, lineTotalUsd, askingLineTotalUsd };
+          askingUnitUsd !== null ? askingUnitUsd * askingQuantity : null;
+        return { ...card, quantity, askingQuantity, lineTotalUsd, askingLineTotalUsd };
       });
       setCardCostTotal(recomputeCostTotal(next));
       setCardAskingTotal(recomputeAskingTotal(next));
@@ -642,13 +653,35 @@ export default function App() {
         const askingUnitUsd =
           askingPriceCents === null ? null : Number(askingPriceCents) / 100;
         const askingLineTotalUsd =
-          askingUnitUsd !== null ? askingUnitUsd * card.quantity : null;
+          askingUnitUsd !== null ? askingUnitUsd * (card.askingQuantity ?? card.quantity) : null;
         return {
           ...card,
           askingInput: nextValue,
           askingPriceCents,
           askingLineTotalUsd
         };
+      });
+      setCardAskingTotal(recomputeAskingTotal(next));
+      return next;
+    });
+  }
+
+  function handleAskingQuantityChange(index, nextValue) {
+    const raw = Number(nextValue);
+
+    setUploadedCards((previous) => {
+      const next = previous.map((card, i) => {
+        if (i !== index) {
+          return card;
+        }
+        const askingQuantity = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1;
+        const clamped = Math.max(1, Math.min(card.quantity, askingQuantity));
+        const askingUnitUsd =
+          card.askingPriceCents === null || card.askingPriceCents === undefined
+            ? null
+            : Number(card.askingPriceCents) / 100;
+        const askingLineTotalUsd = askingUnitUsd !== null ? askingUnitUsd * clamped : null;
+        return { ...card, askingQuantity: clamped, askingLineTotalUsd };
       });
       setCardAskingTotal(recomputeAskingTotal(next));
       return next;
@@ -770,6 +803,7 @@ export default function App() {
       .map((card) => ({
         cardName: String(card.resolvedName || card.inputName || '').trim(),
         quantity: Number(card.quantity) || 1,
+        askingQuantity: Number(card.askingQuantity) || Number(card.quantity) || 1,
         askingPriceCents:
           card.askingPriceCents === null || card.askingPriceCents === undefined
             ? null
@@ -944,6 +978,7 @@ export default function App() {
                           <th>TCGPlayer Low</th>
                           <th>Line Total</th>
                           <th>Asking For</th>
+                          <th>Ask Qty</th>
                           <th>Asking Total</th>
                           <th>Links / Status</th>
                         </tr>
@@ -1038,6 +1073,18 @@ export default function App() {
                                 value={card.askingInput ?? formatCents(card.askingPriceCents)}
                                 onChange={(event) => handleAskingPriceChange(index, event.target.value)}
                                 onBlur={() => handleAskingPriceBlur(index)}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                className="qty-input"
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={card.askingQuantity ?? card.quantity}
+                                onChange={(event) =>
+                                  handleAskingQuantityChange(index, event.target.value)
+                                }
                               />
                             </td>
                             <td>

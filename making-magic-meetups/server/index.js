@@ -116,6 +116,7 @@ db.exec(`
     account_id INTEGER NOT NULL,
     card_name TEXT NOT NULL,
     quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+    asking_quantity INTEGER,
     asking_price_cents INTEGER,
     scryfall_id TEXT,
     set_code TEXT,
@@ -137,6 +138,7 @@ try {
 }
 
 for (const column of [
+  'asking_quantity INTEGER',
   'scryfall_id TEXT',
   'set_code TEXT',
   'set_name TEXT',
@@ -174,6 +176,7 @@ const upsertAccountCard = db.prepare(`
     account_id,
     card_name,
     quantity,
+    asking_quantity,
     asking_price_cents,
     scryfall_id,
     set_code,
@@ -182,9 +185,10 @@ const upsertAccountCard = db.prepare(`
     image_small,
     image_normal
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(account_id, card_name) DO UPDATE SET
     quantity = excluded.quantity,
+    asking_quantity = excluded.asking_quantity,
     asking_price_cents = excluded.asking_price_cents,
     scryfall_id = excluded.scryfall_id,
     set_code = excluded.set_code,
@@ -199,6 +203,7 @@ const listAccountCards = db.prepare(`
   SELECT
     card_name,
     quantity,
+    asking_quantity,
     asking_price_cents,
     scryfall_id,
     set_code,
@@ -433,6 +438,10 @@ app.get('/api/cards', (req, res) => {
   const entries = listAccountCards.all(user.id).map((row) => ({
     cardName: row.card_name,
     quantity: row.quantity,
+    askingQuantity:
+      row.asking_quantity === null || row.asking_quantity === undefined
+        ? null
+        : Number(row.asking_quantity),
     askingPriceCents:
       row.asking_price_cents === null || row.asking_price_cents === undefined
         ? null
@@ -470,6 +479,7 @@ app.post('/api/cards', (req, res) => {
   for (const submitted of submittedCards) {
     let cardName = '';
     let quantity = 1;
+    let askingQuantity = null;
     let askingPriceCents = null;
     let scryfallId = null;
     let setCode = null;
@@ -485,6 +495,12 @@ app.post('/api/cards', (req, res) => {
       quantity = Number(submitted.quantity);
       if (!Number.isFinite(quantity) || quantity <= 0) {
         quantity = 1;
+      }
+      if (submitted.askingQuantity !== null && submitted.askingQuantity !== undefined) {
+        const rawAskQty = Number(submitted.askingQuantity);
+        if (Number.isFinite(rawAskQty) && rawAskQty > 0) {
+          askingQuantity = Math.floor(rawAskQty);
+        }
       }
       askingPriceCents = parseAskingPriceCentsFromSubmittedCard(submitted);
       scryfallId = submitted.scryfallId ? String(submitted.scryfallId).trim() : null;
@@ -506,6 +522,9 @@ app.post('/api/cards', (req, res) => {
       if (askingPriceCents !== null) {
         existing.askingPriceCents = askingPriceCents;
       }
+      if (askingQuantity !== null) {
+        existing.askingQuantity = askingQuantity;
+      }
       if (scryfallId) {
         existing.scryfallId = scryfallId;
         existing.setCode = setCode;
@@ -518,6 +537,7 @@ app.post('/api/cards', (req, res) => {
       cardMap.set(normalized, {
         cardName,
         quantity,
+        askingQuantity,
         askingPriceCents,
         scryfallId,
         setCode,
@@ -543,10 +563,15 @@ app.post('/api/cards', (req, res) => {
   const saveCards = db.transaction((accountId, cardEntries) => {
     clearAccountCards.run(accountId);
     for (const entry of cardEntries) {
+      const normalizedAskQty =
+        entry.askingQuantity === null || entry.askingQuantity === undefined
+          ? entry.quantity
+          : Math.max(1, Math.min(entry.quantity, Math.floor(Number(entry.askingQuantity))));
       upsertAccountCard.run(
         accountId,
         entry.cardName,
         entry.quantity,
+        normalizedAskQty,
         entry.askingPriceCents ?? null,
         entry.scryfallId ?? null,
         entry.setCode ?? null,
