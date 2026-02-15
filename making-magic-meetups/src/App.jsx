@@ -976,7 +976,9 @@ export default function App() {
 
   const headerBrand = (
     <div className="topbar-left">
-      <p className="logo">Making Magic Meetups</p>
+      <a className="logo" href="#/">
+        Making Magic Meetups
+      </a>
       <a className="topbar-link" href="#/dashboard">
         Dashboard
       </a>
