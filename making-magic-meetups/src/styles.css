@@ -53,6 +53,22 @@ body {
   font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: 0.03em;
+  color: var(--text-900);
+  text-decoration: none;
+}
+
+.logo:visited {
+  color: var(--text-900);
+}
+
+.logo:hover {
+  text-decoration: none;
+}
+
+.logo:focus-visible {
+  outline: 2px solid var(--mint-400);
+  outline-offset: 2px;
+  border-radius: 0.35rem;
 }
 
 .topbar-left {
