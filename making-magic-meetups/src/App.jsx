@@ -51,6 +51,12 @@ export default function App() {
   const [isCardPriceLoading, setIsCardPriceLoading] = useState(false);
   const [versionOptionsByKey, setVersionOptionsByKey] = useState({});
   const [versionLoadingKey, setVersionLoadingKey] = useState(null);
+  const [settingsUsername, setSettingsUsername] = useState('');
+  const [settingsFullName, setSettingsFullName] = useState('');
+  const [settingsEmail, setSettingsEmail] = useState('');
+  const [settingsNewPassword, setSettingsNewPassword] = useState('');
+  const [settingsFeedback, setSettingsFeedback] = useState('');
+  const [isSettingsSaving, setIsSettingsSaving] = useState(false);
 
   useEffect(() => {
     function syncRouteFromHash() {
@@ -63,6 +69,10 @@ export default function App() {
         setRoute('dashboard');
         return;
       }
+      if (hash === '#/settings') {
+        setRoute('settings');
+        return;
+      }
       setRoute('home');
     }
 
@@ -73,6 +83,34 @@ export default function App() {
       window.removeEventListener('hashchange', syncRouteFromHash);
     };
   }, []);
+
+  useEffect(() => {
+    if (route !== 'settings') {
+      return;
+    }
+    if (!loggedInUser || loggedInUser.role !== 'user' || !loginAuthHeader) {
+      return;
+    }
+
+    (async () => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/me`, {
+          headers: { Authorization: loginAuthHeader }
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          setSettingsFeedback(payload.error || 'Could not load settings.');
+          return;
+        }
+        setSettingsUsername(payload.account?.username || '');
+        setSettingsFullName(payload.account?.fullName || '');
+        setSettingsEmail(payload.account?.email || '');
+        setSettingsFeedback('');
+      } catch (_error) {
+        setSettingsFeedback('Could not load settings.');
+      }
+    })();
+  }, [route, loggedInUser, loginAuthHeader]);
 
   useEffect(() => {
     const rawSession = window.localStorage.getItem(sessionStorageKey);
@@ -846,6 +884,68 @@ export default function App() {
     }
   }
 
+  async function handleSaveSettings(event) {
+    event.preventDefault();
+    setSettingsFeedback('');
+
+    if (!loggedInUser || loggedInUser.role !== 'user') {
+      setSettingsFeedback('Please log in with a user account.');
+      return;
+    }
+    if (!loginAuthHeader) {
+      setSettingsFeedback('Please log in again.');
+      return;
+    }
+
+    setIsSettingsSaving(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/me`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: loginAuthHeader
+        },
+        body: JSON.stringify({
+          username: settingsUsername,
+          fullName: settingsFullName,
+          email: settingsEmail,
+          password: settingsNewPassword ? settingsNewPassword : undefined
+        })
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setSettingsFeedback(payload.error || 'Could not save settings.');
+        return;
+      }
+
+      setSettingsFeedback('Settings saved.');
+      setSettingsNewPassword('');
+      setLoggedInUser((prev) =>
+        prev ? { ...prev, username: payload.account?.username || prev.username } : prev
+      );
+
+      const rawSession = window.localStorage.getItem(sessionStorageKey);
+      if (rawSession) {
+        try {
+          const session = JSON.parse(rawSession);
+          window.localStorage.setItem(
+            sessionStorageKey,
+            JSON.stringify({
+              ...session,
+              user: { ...(session.user || {}), username: payload.account?.username || session.user?.username }
+            })
+          );
+        } catch (_error) {
+          // ignore
+        }
+      }
+    } catch (_error) {
+      setSettingsFeedback('Could not save settings.');
+    } finally {
+      setIsSettingsSaving(false);
+    }
+  }
+
   const headerLogin = (
     <div className="topbar-right">
       <form className="top-login-form" onSubmit={handleUserLogin}>
@@ -900,8 +1000,88 @@ export default function App() {
       <a className="topbar-link" href="#/dashboard">
         Dashboard
       </a>
+      {loggedInUser?.role === 'user' ? (
+        <a className="topbar-link" href="#/settings">
+          Settings
+        </a>
+      ) : null}
     </div>
   );
+
+  if (route === 'settings') {
+    return (
+      <div className="page">
+        <header className="topbar">
+          {headerBrand}
+          {headerLogin}
+        </header>
+
+        <main>
+          <section className="join">
+            <p className="kicker">User Login</p>
+            <h1>User Settings</h1>
+            {!loggedInUser || loggedInUser.role !== 'user' ? (
+              <p>Please log in with a user account to edit settings.</p>
+            ) : (
+              <form className="join-form" onSubmit={handleSaveSettings}>
+                <label htmlFor="settings-username" className="sr-only">
+                  Username
+                </label>
+                <input
+                  id="settings-username"
+                  type="text"
+                  placeholder="username"
+                  value={settingsUsername}
+                  onChange={(event) => setSettingsUsername(event.target.value.toLowerCase())}
+                  required
+                  minLength={3}
+                  maxLength={24}
+                  pattern="[a-z0-9_]+"
+                />
+                <label htmlFor="settings-fullname" className="sr-only">
+                  Full Name
+                </label>
+                <input
+                  id="settings-fullname"
+                  type="text"
+                  placeholder="Full name"
+                  value={settingsFullName}
+                  onChange={(event) => setSettingsFullName(event.target.value)}
+                  required
+                />
+                <label htmlFor="settings-email" className="sr-only">
+                  Email
+                </label>
+                <input
+                  id="settings-email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={settingsEmail}
+                  onChange={(event) => setSettingsEmail(event.target.value)}
+                  required
+                />
+                <label htmlFor="settings-password" className="sr-only">
+                  New Password
+                </label>
+                <input
+                  id="settings-password"
+                  type="password"
+                  placeholder="New password (optional)"
+                  value={settingsNewPassword}
+                  onChange={(event) => setSettingsNewPassword(event.target.value)}
+                  minLength={6}
+                />
+                <button type="submit" disabled={isSettingsSaving}>
+                  {isSettingsSaving ? 'Saving...' : 'Save Settings'}
+                </button>
+              </form>
+            )}
+            {settingsFeedback ? <p>{settingsFeedback}</p> : null}
+          </section>
+        </main>
+      </div>
+    );
+  }
 
   if (route === 'dashboard') {
     return (

@@ -91,6 +91,28 @@ const findAccountForLogin = db.prepare(`
   LIMIT 1
 `);
 
+const findAccountById = db.prepare(`
+  SELECT id, username, full_name, email, created_at
+  FROM accounts
+  WHERE id = ?
+  LIMIT 1
+`);
+
+const updateAccountProfile = db.prepare(`
+  UPDATE accounts
+  SET username = ?,
+      full_name = ?,
+      email = ?
+  WHERE id = ?
+`);
+
+const updateAccountPassword = db.prepare(`
+  UPDATE accounts
+  SET password_hash = ?,
+      password_plain = ?
+  WHERE id = ?
+`);
+
 const listAccountsForAdmin = db.prepare(`
   SELECT id, username, full_name, email, password_plain, password_hash, created_at
   FROM accounts
@@ -424,6 +446,95 @@ app.post('/api/login', (req, res) => {
   return res.json({
     ok: true,
     user
+  });
+});
+
+app.get('/api/me', (req, res) => {
+  const credentials = parseBasicAuth(req);
+  if (!credentials) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
+  const user = authenticateLogin(credentials.identifier, credentials.password);
+  if (!user || user.role !== 'user') {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
+  const account = findAccountById.get(user.id);
+  if (!account) {
+    return res.status(404).json({ error: 'Account not found.' });
+  }
+
+  return res.json({
+    ok: true,
+    account: {
+      id: account.id,
+      username: account.username,
+      fullName: account.full_name,
+      email: account.email,
+      createdAt: account.created_at
+    }
+  });
+});
+
+app.patch('/api/me', (req, res) => {
+  const credentials = parseBasicAuth(req);
+  if (!credentials) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
+  const user = authenticateLogin(credentials.identifier, credentials.password);
+  if (!user || user.role !== 'user') {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
+  const username = String(req.body?.username ?? '').trim().toLowerCase();
+  const fullName = String(req.body?.fullName ?? '').trim();
+  const email = String(req.body?.email ?? '').trim().toLowerCase();
+  const nextPassword = req.body?.password === undefined ? null : String(req.body?.password || '');
+
+  if (!username || !/^[a-z0-9_]{3,24}$/.test(username)) {
+    return res.status(400).json({
+      error: 'Username must be 3-24 chars and use lowercase letters, numbers, or underscores.'
+    });
+  }
+  if (!fullName || fullName.length < 2) {
+    return res.status(400).json({ error: 'Please provide your full name.' });
+  }
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'Please provide a valid email.' });
+  }
+  if (nextPassword !== null && nextPassword.length > 0 && nextPassword.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  }
+
+  const saveTx = db.transaction((accountId) => {
+    updateAccountProfile.run(username, fullName, email, accountId);
+    if (nextPassword !== null && nextPassword.length > 0) {
+      const passwordHash = crypto.createHash('sha256').update(nextPassword).digest('hex');
+      updateAccountPassword.run(passwordHash, nextPassword, accountId);
+    }
+  });
+
+  try {
+    saveTx(user.id);
+  } catch (error) {
+    if (String(error?.message || '').includes('UNIQUE constraint failed')) {
+      return res.status(409).json({ error: 'Email or username already in use.' });
+    }
+    return res.status(500).json({ error: 'Failed to update account.' });
+  }
+
+  const account = findAccountById.get(user.id);
+  return res.json({
+    ok: true,
+    account: {
+      id: account.id,
+      username: account.username,
+      fullName: account.full_name,
+      email: account.email,
+      createdAt: account.created_at
+    }
   });
 });
 
