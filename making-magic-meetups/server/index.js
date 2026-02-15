@@ -348,6 +348,13 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+// Preflight hardening: handle OPTIONS at middleware level so it never falls through to a 404.
+app.use((req, res, next) => {
+  if (req.method !== 'OPTIONS') {
+    return next();
+  }
+  return cors(corsOptions)(req, res, () => res.sendStatus(204));
+});
 // Ensure browsers can complete CORS preflight requests (OPTIONS) for all endpoints.
 // Note: Express 5 (path-to-regexp v6) does not accept '*' as a route pattern.
 app.options(/.*/, cors(corsOptions));
