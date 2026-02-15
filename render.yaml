@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: makingmagicmeetups-app
+    env: node
+    plan: free
+    rootDir: basic-website-new
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true

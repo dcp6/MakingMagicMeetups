@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Basic Website</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <h1>My Basic Website</h1>
+      <div class="header-right">
+        <nav>
+          <a href="#home">Home</a>
+          <a href="#about">About</a>
+          <a href="#contact">Contact</a>
+          <a id="usersTabLink" href="/user-list.html" hidden>Users</a>
+        </nav>
+        <form id="authForm" class="admin-inline-form">
+          <select id="authType" aria-label="Login type">
+            <option value="user">User</option>
+            <option value="admin">Admin</option>
+          </select>
+          <input id="authUsername" type="text" placeholder="Username" required />
+          <input id="authPassword" type="password" placeholder="Password" maxlength="12" required />
+          <button type="submit">Login</button>
+        </form>
+        <button id="logoutBtnMain" type="button" class="header-logout" hidden>Log Out</button>
+        <span id="currentUserDisplay" class="current-user">Current user: Guest</span>
+      </div>
+    </header>
+
+    <main>
+      <section id="home" class="hero">
+        <h2>Welcome</h2>
+        <p>This is a simple website built with plain HTML, CSS, and JavaScript.</p>
+        <button id="helloBtn">Click Me</button>
+      </section>
+
+      <section id="about" class="card">
+        <h3>About</h3>
+        <p>Use this starter to build your own pages quickly.</p>
+      </section>
+
+      <section id="contact" class="card">
+        <h3>Contact</h3>
+        <p>Email: hello@example.com</p>
+      </section>
+
+      <section id="users" class="card">
+        <h3>User Database</h3>
+        <p>Create users, log in, and list saved users from SQLite (admin only).</p>
+
+        <div class="user-grid">
+          <div class="user-form">
+            <h4>User List (Admin)</h4>
+            <p class="card-helper">Admin login required to view all saved users.</p>
+            <button id="loadUsersBtn" type="button" disabled>Load Users (Admin)</button>
+          </div>
+
+          <form id="registerForm" class="user-form">
+            <h4>Add User</h4>
+            <p class="card-helper">Create a new user from this card.</p>
+            <input id="registerName" type="text" placeholder="Name" required />
+            <input id="registerUsername" type="text" placeholder="Username" required />
+            <input
+              id="registerPassword"
+              type="password"
+              placeholder="Password (6-12 chars)"
+              minlength="6"
+              maxlength="12"
+              required
+            />
+            <button id="addUserBtn" type="submit">Add User</button>
+          </form>
+        </div>
+        <p id="userStatus" class="status" aria-live="polite"></p>
+        <div id="usersOutput" class="deck-output" hidden>
+          <h4>Saved Users</h4>
+          <div id="usersList" class="users-list"></div>
+        </div>
+      </section>
+
+      <section id="upload" class="card">
+        <h3>Upload your cards</h3>
+        <p>Paste raw deck numbers and card names to display a Scryfall-style list.</p>
+        <div class="importer">
+          <label for="deckRaw">Raw deck list</label>
+          <textarea
+            id="deckRaw"
+            rows="8"
+            placeholder="1 Sol Ring&#10;4 Lightning Bolt&#10;2 Counterspell"
+          ></textarea>
+          <div class="importer-row">
+            <button id="loadDeckBtn" type="button">Load List</button>
+          </div>
+          <label class="inline-option" for="showPrices">
+            <input id="showPrices" type="checkbox" />
+            Show price under each card
+          </label>
+          <p id="importStatus" class="status" aria-live="polite"></p>
+        </div>
+        <div id="deckOutput" class="deck-output" hidden>
+          <h4 id="deckTitle"></h4>
+          <p id="deckMeta" class="deck-meta"></p>
+          <div id="deckCards" class="deck-cards"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>&copy; <span id="year"></span> Basic Website</p>
+    </footer>
+
+    <script src="script.js"></script>
+  </body>
+</html>
