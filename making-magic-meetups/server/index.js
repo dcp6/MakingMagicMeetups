@@ -117,6 +117,12 @@ db.exec(`
     card_name TEXT NOT NULL,
     quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
     asking_price_cents INTEGER,
+    scryfall_id TEXT,
+    set_code TEXT,
+    set_name TEXT,
+    collector_number TEXT,
+    image_small TEXT,
+    image_normal TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
@@ -128,6 +134,21 @@ try {
   db.exec(`ALTER TABLE account_card_items ADD COLUMN asking_price_cents INTEGER`);
 } catch (_error) {
   // Column already exists; ignore migration error.
+}
+
+for (const column of [
+  'scryfall_id TEXT',
+  'set_code TEXT',
+  'set_name TEXT',
+  'collector_number TEXT',
+  'image_small TEXT',
+  'image_normal TEXT'
+]) {
+  try {
+    db.exec(`ALTER TABLE account_card_items ADD COLUMN ${column}`);
+  } catch (_error) {
+    // Column already exists; ignore migration error.
+  }
 }
 
 db.exec(`
@@ -149,16 +170,42 @@ const clearAccountCards = db.prepare(`
 `);
 
 const upsertAccountCard = db.prepare(`
-  INSERT INTO account_card_items (account_id, card_name, quantity, asking_price_cents)
-  VALUES (?, ?, ?, ?)
+  INSERT INTO account_card_items (
+    account_id,
+    card_name,
+    quantity,
+    asking_price_cents,
+    scryfall_id,
+    set_code,
+    set_name,
+    collector_number,
+    image_small,
+    image_normal
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(account_id, card_name) DO UPDATE SET
     quantity = excluded.quantity,
     asking_price_cents = excluded.asking_price_cents,
+    scryfall_id = excluded.scryfall_id,
+    set_code = excluded.set_code,
+    set_name = excluded.set_name,
+    collector_number = excluded.collector_number,
+    image_small = excluded.image_small,
+    image_normal = excluded.image_normal,
     updated_at = CURRENT_TIMESTAMP
 `);
 
 const listAccountCards = db.prepare(`
-  SELECT card_name, quantity, asking_price_cents
+  SELECT
+    card_name,
+    quantity,
+    asking_price_cents,
+    scryfall_id,
+    set_code,
+    set_name,
+    collector_number,
+    image_small,
+    image_normal
   FROM account_card_items
   WHERE account_id = ?
   ORDER BY card_name COLLATE NOCASE ASC
@@ -369,7 +416,13 @@ app.get('/api/cards', (req, res) => {
     askingPriceCents:
       row.asking_price_cents === null || row.asking_price_cents === undefined
         ? null
-        : Number(row.asking_price_cents)
+        : Number(row.asking_price_cents),
+    scryfallId: row.scryfall_id || null,
+    setCode: row.set_code || null,
+    setName: row.set_name || null,
+    collectorNumber: row.collector_number || null,
+    imageSmall: row.image_small || null,
+    imageNormal: row.image_normal || null
   }));
   const cards = [];
   for (const entry of entries) {
@@ -398,6 +451,12 @@ app.post('/api/cards', (req, res) => {
     let cardName = '';
     let quantity = 1;
     let askingPriceCents = null;
+    let scryfallId = null;
+    let setCode = null;
+    let setName = null;
+    let collectorNumber = null;
+    let imageSmall = null;
+    let imageNormal = null;
 
     if (typeof submitted === 'string') {
       cardName = submitted.trim();
@@ -410,6 +469,12 @@ app.post('/api/cards', (req, res) => {
       askingPriceCents = parseAskingPriceCents(
         submitted.askingPriceCents ?? submitted.askingPrice ?? submitted.asking_price
       );
+      scryfallId = submitted.scryfallId ? String(submitted.scryfallId).trim() : null;
+      setCode = submitted.setCode ? String(submitted.setCode).trim() : null;
+      setName = submitted.setName ? String(submitted.setName).trim() : null;
+      collectorNumber = submitted.collectorNumber ? String(submitted.collectorNumber).trim() : null;
+      imageSmall = submitted.imageSmall ? String(submitted.imageSmall).trim() : null;
+      imageNormal = submitted.imageNormal ? String(submitted.imageNormal).trim() : null;
     }
 
     if (!cardName) {
@@ -423,8 +488,26 @@ app.post('/api/cards', (req, res) => {
       if (askingPriceCents !== null) {
         existing.askingPriceCents = askingPriceCents;
       }
+      if (scryfallId) {
+        existing.scryfallId = scryfallId;
+        existing.setCode = setCode;
+        existing.setName = setName;
+        existing.collectorNumber = collectorNumber;
+        existing.imageSmall = imageSmall;
+        existing.imageNormal = imageNormal;
+      }
     } else {
-      cardMap.set(normalized, { cardName, quantity, askingPriceCents });
+      cardMap.set(normalized, {
+        cardName,
+        quantity,
+        askingPriceCents,
+        scryfallId,
+        setCode,
+        setName,
+        collectorNumber,
+        imageSmall,
+        imageNormal
+      });
     }
   }
 
@@ -446,7 +529,13 @@ app.post('/api/cards', (req, res) => {
         accountId,
         entry.cardName,
         entry.quantity,
-        entry.askingPriceCents ?? null
+        entry.askingPriceCents ?? null,
+        entry.scryfallId ?? null,
+        entry.setCode ?? null,
+        entry.setName ?? null,
+        entry.collectorNumber ?? null,
+        entry.imageSmall ?? null,
+        entry.imageNormal ?? null
       );
     }
   });

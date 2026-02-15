@@ -49,6 +49,8 @@ export default function App() {
   const [cardAskingTotal, setCardAskingTotal] = useState(0);
   const [cardUploadFeedback, setCardUploadFeedback] = useState('');
   const [isCardPriceLoading, setIsCardPriceLoading] = useState(false);
+  const [versionOptionsByKey, setVersionOptionsByKey] = useState({});
+  const [versionLoadingKey, setVersionLoadingKey] = useState(null);
 
   useEffect(() => {
     function syncRouteFromHash() {
@@ -247,12 +249,17 @@ export default function App() {
     }
   }
 
-  async function fetchCardPriceFromScryfall(cardName) {
+  async function fetchCardFromScryfall(entry) {
+    const cardName = entry.cardName;
+    const endpoints = [];
+
+    if (entry.scryfallId) {
+      endpoints.push(`https://api.scryfall.com/cards/${encodeURIComponent(entry.scryfallId)}`);
+    }
+
     const encoded = encodeURIComponent(cardName);
-    const endpoints = [
-      `https://api.scryfall.com/cards/named?exact=${encoded}`,
-      `https://api.scryfall.com/cards/named?fuzzy=${encoded}`
-    ];
+    endpoints.push(`https://api.scryfall.com/cards/named?exact=${encoded}`);
+    endpoints.push(`https://api.scryfall.com/cards/named?fuzzy=${encoded}`);
 
     for (const endpoint of endpoints) {
       try {
@@ -266,7 +273,13 @@ export default function App() {
             resolvedName: cardName,
             tcgLow: 'N/A',
             tcgUrl: null,
-            error: 'Lookup failed'
+            error: 'Lookup failed',
+            scryfallId: entry.scryfallId || null,
+            setCode: entry.setCode || null,
+            setName: entry.setName || null,
+            collectorNumber: entry.collectorNumber || null,
+            imageSmall: entry.imageSmall || null,
+            imageNormal: entry.imageNormal || null
           };
         }
 
@@ -276,7 +289,13 @@ export default function App() {
           resolvedName: data.name || cardName,
           tcgLow: data.prices?.usd ? `$${data.prices.usd}` : 'N/A',
           tcgUrl: data.purchase_uris?.tcgplayer || null,
-          error: null
+          error: null,
+          scryfallId: data.id || entry.scryfallId || null,
+          setCode: data.set || entry.setCode || null,
+          setName: data.set_name || entry.setName || null,
+          collectorNumber: data.collector_number || entry.collectorNumber || null,
+          imageSmall: data.image_uris?.small || entry.imageSmall || null,
+          imageNormal: data.image_uris?.normal || entry.imageNormal || null
         };
       } catch (_error) {
         return {
@@ -284,7 +303,13 @@ export default function App() {
           resolvedName: cardName,
           tcgLow: 'N/A',
           tcgUrl: null,
-          error: 'Network error'
+          error: 'Network error',
+          scryfallId: entry.scryfallId || null,
+          setCode: entry.setCode || null,
+          setName: entry.setName || null,
+          collectorNumber: entry.collectorNumber || null,
+          imageSmall: entry.imageSmall || null,
+          imageNormal: entry.imageNormal || null
         };
       }
     }
@@ -294,7 +319,13 @@ export default function App() {
       resolvedName: cardName,
       tcgLow: 'N/A',
       tcgUrl: null,
-      error: 'Card not found'
+      error: 'Card not found',
+      scryfallId: entry.scryfallId || null,
+      setCode: entry.setCode || null,
+      setName: entry.setName || null,
+      collectorNumber: entry.collectorNumber || null,
+      imageSmall: entry.imageSmall || null,
+      imageNormal: entry.imageNormal || null
     };
   }
 
@@ -410,12 +441,17 @@ export default function App() {
   }
 
   async function priceCards(entries) {
-    const uniqueNames = entries.map((entry) => entry.cardName);
-    const pricedUnique = await Promise.all(uniqueNames.map((name) => fetchCardPriceFromScryfall(name)));
+    const pricedUnique = await Promise.all(entries.map((entry) => fetchCardFromScryfall(entry)));
     const pricedEntries = pricedUnique.map((priced, index) => {
       const quantity = entries[index]?.quantity ?? 1;
       const unitUsd = parseUsdPrice(priced.tcgLow);
       const askingPriceCents = entries[index]?.askingPriceCents ?? null;
+      const scryfallId = priced.scryfallId ?? entries[index]?.scryfallId ?? null;
+      const setCode = priced.setCode ?? entries[index]?.setCode ?? null;
+      const setName = priced.setName ?? entries[index]?.setName ?? null;
+      const collectorNumber = priced.collectorNumber ?? entries[index]?.collectorNumber ?? null;
+      const imageSmall = priced.imageSmall ?? entries[index]?.imageSmall ?? null;
+      const imageNormal = priced.imageNormal ?? entries[index]?.imageNormal ?? null;
       const askingUnitUsd =
         askingPriceCents === null || askingPriceCents === undefined
           ? null
@@ -427,7 +463,13 @@ export default function App() {
         lineTotalUsd: unitUsd !== null ? unitUsd * quantity : null,
         askingPriceCents,
         askingUnitUsd,
-        askingLineTotalUsd: askingUnitUsd !== null ? askingUnitUsd * quantity : null
+        askingLineTotalUsd: askingUnitUsd !== null ? askingUnitUsd * quantity : null,
+        scryfallId,
+        setCode,
+        setName,
+        collectorNumber,
+        imageSmall,
+        imageNormal
       };
     });
 
@@ -483,7 +525,13 @@ export default function App() {
             askingPriceCents:
               entry.askingPriceCents === null || entry.askingPriceCents === undefined
                 ? null
-                : Number(entry.askingPriceCents)
+                : Number(entry.askingPriceCents),
+            scryfallId: entry.scryfallId || null,
+            setCode: entry.setCode || null,
+            setName: entry.setName || null,
+            collectorNumber: entry.collectorNumber || null,
+            imageSmall: entry.imageSmall || null,
+            imageNormal: entry.imageNormal || null
           }))
         : parseCardEntries(cards.join('\n'));
 
@@ -597,6 +645,90 @@ export default function App() {
     });
   }
 
+  async function loadVersionOptionsFor(cardKey, cardName) {
+    if (!cardKey || !cardName) {
+      return;
+    }
+
+    if (versionOptionsByKey[cardKey]) {
+      return;
+    }
+
+    setVersionLoadingKey(cardKey);
+    try {
+      const query = encodeURIComponent(`!"${cardName}"`);
+      const response = await fetch(
+        `https://api.scryfall.com/cards/search?q=${query}&unique=prints&order=released&dir=desc`
+      );
+      if (!response.ok) {
+        setVersionLoadingKey(null);
+        return;
+      }
+      const payload = await response.json();
+      const options = Array.isArray(payload.data)
+        ? payload.data.slice(0, 25).map((card) => ({
+            id: card.id,
+            name: card.name,
+            set: card.set,
+            setName: card.set_name,
+            collectorNumber: card.collector_number,
+            releasedAt: card.released_at,
+            imageSmall: card.image_uris?.small || null,
+            imageNormal: card.image_uris?.normal || null
+          }))
+        : [];
+
+      setVersionOptionsByKey((prev) => ({ ...prev, [cardKey]: options }));
+    } catch (_error) {
+      // ignore
+    } finally {
+      setVersionLoadingKey(null);
+    }
+  }
+
+  async function handleVersionChange(index, nextScryfallId) {
+    const scryfallId = String(nextScryfallId || '').trim();
+    if (!scryfallId) {
+      return;
+    }
+
+    setUploadedCards((prev) =>
+      prev.map((card, i) => (i === index ? { ...card, scryfallId } : card))
+    );
+
+    // Reprice & refresh metadata from the exact printing.
+    const card = uploadedCards[index];
+    if (!card) {
+      return;
+    }
+    const refreshed = await fetchCardFromScryfall({
+      cardName: card.resolvedName || card.inputName,
+      scryfallId
+    });
+
+    setUploadedCards((prev) =>
+      prev.map((row, i) => {
+        if (i !== index) {
+          return row;
+        }
+        const unitUsd = parseUsdPrice(refreshed.tcgLow);
+        const lineTotalUsd = unitUsd !== null ? unitUsd * row.quantity : null;
+        return {
+          ...row,
+          ...refreshed,
+          scryfallId: refreshed.scryfallId || scryfallId,
+          setCode: refreshed.setCode || row.setCode || null,
+          setName: refreshed.setName || row.setName || null,
+          collectorNumber: refreshed.collectorNumber || row.collectorNumber || null,
+          imageSmall: refreshed.imageSmall || row.imageSmall || null,
+          imageNormal: refreshed.imageNormal || row.imageNormal || null,
+          unitUsd,
+          lineTotalUsd
+        };
+      })
+    );
+  }
+
   async function handleSaveList() {
     if (!loggedInUser || loggedInUser.role !== 'user') {
       setCardUploadFeedback('Log in with a user account to save a card list.');
@@ -616,7 +748,13 @@ export default function App() {
         askingPriceCents:
           card.askingPriceCents === null || card.askingPriceCents === undefined
             ? null
-            : Number(card.askingPriceCents)
+            : Number(card.askingPriceCents),
+        scryfallId: card.scryfallId || null,
+        setCode: card.setCode || null,
+        setName: card.setName || null,
+        collectorNumber: card.collectorNumber || null,
+        imageSmall: card.imageSmall || null,
+        imageNormal: card.imageNormal || null
       }))
       .filter((entry) => entry.cardName);
 
@@ -774,7 +912,9 @@ export default function App() {
                     <table className="price-table">
                       <thead>
                         <tr>
+                          <th>Pic</th>
                           <th>Card</th>
+                          <th>Version</th>
                           <th>Qty</th>
                           <th>TCGPlayer Low</th>
                           <th>Line Total</th>
@@ -786,7 +926,58 @@ export default function App() {
                       <tbody>
                         {uploadedCards.map((card, index) => (
                           <tr key={`${card.inputName}-${index}`}>
+                            <td>
+                              {card.imageSmall ? (
+                                <img
+                                  className="card-thumb"
+                                  src={card.imageSmall}
+                                  alt={card.resolvedName}
+                                  loading="lazy"
+                                />
+                              ) : null}
+                            </td>
                             <td>{card.resolvedName}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="version-button"
+                                onClick={() =>
+                                  loadVersionOptionsFor(
+                                    card.scryfallId || card.resolvedName || card.inputName,
+                                    card.resolvedName || card.inputName
+                                  )
+                                }
+                              >
+                                {card.setCode && card.collectorNumber
+                                  ? `${card.setCode.toUpperCase()} #${card.collectorNumber}`
+                                  : 'Choose'}
+                              </button>
+                              {versionLoadingKey ===
+                              (card.scryfallId || card.resolvedName || card.inputName) ? (
+                                <div className="version-picker">Loading...</div>
+                              ) : null}
+                              {versionOptionsByKey[
+                                card.scryfallId || card.resolvedName || card.inputName
+                              ]?.length ? (
+                                <div className="version-picker">
+                                  <select
+                                    value={card.scryfallId || ''}
+                                    onChange={(event) =>
+                                      handleVersionChange(index, event.target.value)
+                                    }
+                                  >
+                                    {versionOptionsByKey[
+                                      card.scryfallId || card.resolvedName || card.inputName
+                                    ].map((option) => (
+                                      <option key={option.id} value={option.id}>
+                                        {option.set.toUpperCase()} #{option.collectorNumber} ·{' '}
+                                        {option.setName} · {option.releasedAt}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              ) : null}
+                            </td>
                             <td>
                               <input
                                 className="qty-input"
@@ -835,7 +1026,7 @@ export default function App() {
                       </tbody>
                       <tfoot>
                         <tr>
-                          <th colSpan={3}>Total</th>
+                          <th colSpan={5}>Total</th>
                           <th>${cardCostTotal.toFixed(2)}</th>
                           <th />
                           <th>${cardAskingTotal.toFixed(2)}</th>
