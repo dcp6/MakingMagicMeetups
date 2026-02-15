@@ -1,10 +1,9 @@
 import React from 'react';
 import { useEffect, useState } from 'react';
 
-const apiBaseUrl =
-  import.meta.env.VITE_API_BASE_URL ||
-  (import.meta.env.DEV ? 'http://localhost:8787' : 'https://makingmagicmeetups.onrender.com');
+const configuredApiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || '').trim();
 const sessionStorageKey = 'making_magic_meetups_session_v1';
+const apiBaseStorageKey = 'making_magic_meetups_api_base_v1';
 
 const events = [
   {
@@ -25,6 +24,24 @@ const events = [
 ];
 
 export default function App() {
+  const [apiBaseUrl, setApiBaseUrl] = useState(() => {
+    if (import.meta.env.DEV) {
+      return 'http://localhost:8787';
+    }
+    if (configuredApiBaseUrl) {
+      return configuredApiBaseUrl;
+    }
+    try {
+      const stored = window.localStorage.getItem(apiBaseStorageKey);
+      if (stored && /^https?:\/\//i.test(stored)) {
+        return stored;
+      }
+    } catch (_error) {
+      // ignore
+    }
+    // Default guess; we will auto-detect the right one on load.
+    return 'https://makingmagicmeetups.onrender.com';
+  });
   const [route, setRoute] = useState('home');
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -59,6 +76,7 @@ export default function App() {
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
   const [loginServiceStatus, setLoginServiceStatus] = useState('unknown');
   const [loginServiceLastCheckedAt, setLoginServiceLastCheckedAt] = useState(null);
+  const [loginServiceLastStatusCode, setLoginServiceLastStatusCode] = useState(null);
 
   useEffect(() => {
     function syncRouteFromHash() {
@@ -86,21 +104,61 @@ export default function App() {
     };
   }, []);
 
-  async function checkLoginService() {
+  async function probeApiHealth(baseUrl, timeoutMs = 4500) {
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 4500);
-
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch(`${apiBaseUrl}/api/health`, {
+      const response = await fetch(`${baseUrl}/api/health`, {
         method: 'GET',
         signal: controller.signal
       });
-      const ok = response.ok;
-      setLoginServiceStatus(ok ? 'ok' : 'bad');
+      return response.ok ? { ok: true, status: response.status } : { ok: false, status: response.status };
+    } catch (_error) {
+      return { ok: false, status: null };
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }
+
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      return;
+    }
+    if (configuredApiBaseUrl) {
+      return;
+    }
+
+    const candidates = [
+      'https://makingmagicmeetups.onrender.com',
+      'https://makingmagicmeetups-api.onrender.com'
+    ];
+
+    (async () => {
+      for (const candidate of candidates) {
+        const result = await probeApiHealth(candidate);
+        if (result.ok) {
+          setApiBaseUrl(candidate);
+          try {
+            window.localStorage.setItem(apiBaseStorageKey, candidate);
+          } catch (_error) {
+            // ignore
+          }
+          return;
+        }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function checkLoginService() {
+    setLoginServiceStatus('unknown');
+    try {
+      const result = await probeApiHealth(apiBaseUrl);
+      setLoginServiceLastStatusCode(result.status);
+      setLoginServiceStatus(result.ok ? 'ok' : 'bad');
     } catch (_error) {
       setLoginServiceStatus('bad');
     } finally {
-      window.clearTimeout(timeoutId);
       setLoginServiceLastCheckedAt(Date.now());
     }
   }
@@ -111,8 +169,7 @@ export default function App() {
       checkLoginService();
     }, 15000);
     return () => window.clearInterval(intervalId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [apiBaseUrl]);
 
   useEffect(() => {
     if (route !== 'settings') {
@@ -140,7 +197,7 @@ export default function App() {
         setSettingsFeedback('Could not load settings.');
       }
     })();
-  }, [route, loggedInUser, loginAuthHeader]);
+  }, [route, loggedInUser, loginAuthHeader, apiBaseUrl]);
 
   useEffect(() => {
     const rawSession = window.localStorage.getItem(sessionStorageKey);
@@ -1035,7 +1092,9 @@ export default function App() {
       </button>
       {loginServiceLastCheckedAt ? (
         <p className="login-service-meta">
-          Last checked {new Date(loginServiceLastCheckedAt).toLocaleTimeString()}
+          {apiBaseUrl}{' '}
+          {loginServiceLastStatusCode ? `(${loginServiceLastStatusCode}) ` : ''}
+          · Last checked {new Date(loginServiceLastCheckedAt).toLocaleTimeString()}
         </p>
       ) : null}
     </div>
