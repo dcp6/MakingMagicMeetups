@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>User List</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <h1>User List</h1>
+      <div class="header-right">
+        <nav>
+          <a href="/index.html">Home</a>
+          <a href="/user-list.html">Users</a>
+        </nav>
+        <button id="logoutBtn" type="button">Admin Logout</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="card">
+        <h3>All User Data</h3>
+        <p id="userListStatus" class="status" aria-live="polite"></p>
+        <div class="table-wrap">
+          <table class="users-table" id="usersTable" hidden>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Username</th>
+                <th>Role</th>
+                <th>Email</th>
+                <th>Password Hash</th>
+                <th>Joined (MM/DD/YYYY HH:MM)</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="user-list.js"></script>
+  </body>
+</html>
