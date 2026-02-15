@@ -226,11 +226,13 @@ function parseAskingPriceCents(value) {
     return null;
   }
 
-  const dollars = Number(normalized);
-  if (!Number.isFinite(dollars) || dollars < 0) {
+  const dollarsValue = Number(normalized);
+  if (!Number.isFinite(dollarsValue) || dollarsValue < 0) {
     return null;
   }
-  return Math.round(dollars * 100);
+  // Asking For is stored as whole dollars only.
+  const wholeDollars = Math.floor(dollarsValue);
+  return wholeDollars * 100;
 }
 
 function authenticateLogin(identifier, password) {

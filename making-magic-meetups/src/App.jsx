@@ -399,15 +399,15 @@ export default function App() {
     return value;
   }
 
-  function formatCents(cents) {
+  function formatWholeDollarsFromCents(cents) {
     if (cents === null || cents === undefined) {
       return '';
     }
-    const dollars = Number(cents) / 100;
-    return Number.isFinite(dollars) ? dollars.toFixed(2) : '';
+    const dollars = Math.floor(Number(cents) / 100);
+    return Number.isFinite(dollars) ? String(dollars) : '';
   }
 
-  function parseDollarsToCents(value) {
+  function parseWholeDollarsToCents(value) {
     if (value === '' || value === null || value === undefined) {
       return null;
     }
@@ -415,11 +415,12 @@ export default function App() {
     if (!normalized) {
       return null;
     }
-    const dollars = Number(normalized);
-    if (!Number.isFinite(dollars) || dollars < 0) {
+    const asNumber = Number(normalized);
+    if (!Number.isFinite(asNumber) || asNumber < 0) {
       return null;
     }
-    return Math.round(dollars * 100);
+    const dollars = Math.floor(asNumber);
+    return dollars * 100;
   }
 
   function recomputeCostTotal(pricedEntries) {
@@ -452,8 +453,8 @@ export default function App() {
       const collectorNumber = priced.collectorNumber ?? entries[index]?.collectorNumber ?? null;
       const imageSmall = priced.imageSmall ?? entries[index]?.imageSmall ?? null;
       const imageNormal = priced.imageNormal ?? entries[index]?.imageNormal ?? null;
-      // Asking For is treated as a fixed total per row (not scaled by quantity).
-      const askingTotalUsd =
+      // Asking For is an integer $/card value and scales by quantity.
+      const askingUnitUsd =
         askingPriceCents === null || askingPriceCents === undefined
           ? null
           : Number(askingPriceCents) / 100;
@@ -463,8 +464,8 @@ export default function App() {
         unitUsd,
         lineTotalUsd: unitUsd !== null ? unitUsd * quantity : null,
         askingPriceCents,
-        askingInput: formatCents(askingPriceCents),
-        askingLineTotalUsd: askingTotalUsd,
+        askingInput: formatWholeDollarsFromCents(askingPriceCents),
+        askingLineTotalUsd: askingUnitUsd !== null ? askingUnitUsd * quantity : null,
         scryfallId,
         setCode,
         setName,
@@ -613,8 +614,13 @@ export default function App() {
           return card;
         }
         const lineTotalUsd = card.unitUsd !== null ? card.unitUsd * quantity : null;
-        // Asking total does not scale with quantity.
-        return { ...card, quantity, lineTotalUsd };
+        const askingUnitUsd =
+          card.askingPriceCents === null || card.askingPriceCents === undefined
+            ? null
+            : Number(card.askingPriceCents) / 100;
+        const askingLineTotalUsd =
+          askingUnitUsd !== null ? askingUnitUsd * quantity : null;
+        return { ...card, quantity, lineTotalUsd, askingLineTotalUsd };
       });
       setCardCostTotal(recomputeCostTotal(next));
       setCardAskingTotal(recomputeAskingTotal(next));
@@ -627,15 +633,17 @@ export default function App() {
   }
 
   function handleAskingPriceChange(index, nextValue) {
-    const askingPriceCents = parseDollarsToCents(nextValue);
+    const askingPriceCents = parseWholeDollarsToCents(nextValue);
 
     setUploadedCards((previous) => {
       const next = previous.map((card, i) => {
         if (i !== index) {
           return card;
         }
-        const askingLineTotalUsd =
+        const askingUnitUsd =
           askingPriceCents === null ? null : Number(askingPriceCents) / 100;
+        const askingLineTotalUsd =
+          askingUnitUsd !== null ? askingUnitUsd * card.quantity : null;
         return {
           ...card,
           askingInput: nextValue,
@@ -656,7 +664,7 @@ export default function App() {
         }
         return {
           ...card,
-          askingInput: formatCents(card.askingPriceCents)
+          askingInput: formatWholeDollarsFromCents(card.askingPriceCents)
         };
       });
       return next;
@@ -1016,9 +1024,9 @@ export default function App() {
                               <input
                                 className="ask-input"
                                 type="text"
-                                inputMode="decimal"
-                                placeholder="0.00"
-                                value={card.askingInput ?? formatCents(card.askingPriceCents)}
+                                inputMode="numeric"
+                                placeholder="0"
+                                value={card.askingInput ?? formatWholeDollarsFromCents(card.askingPriceCents)}
                                 onChange={(event) => handleAskingPriceChange(index, event.target.value)}
                                 onBlur={() => handleAskingPriceBlur(index)}
                               />
