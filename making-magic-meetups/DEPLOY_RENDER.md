@@ -34,4 +34,5 @@ This inserts 5 fake accounts (passwords max 10 characters) with `INSERT OR IGNOR
 
 - `GET /api/users` is admin-protected and requires `ADMIN_API_KEY` header.
 - `FRONTEND_ORIGIN` is set to `https://dcp6.github.io` in `render.yaml`.
-- SQLite is file-based; on free web services storage can be ephemeral depending on plan/runtime.
+- `DATA_DIR` is set to `/var/data` for the API service.
+- For true persistence across deploys/restarts, attach a Render persistent disk mounted at `/var/data`.

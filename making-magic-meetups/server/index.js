@@ -8,7 +8,8 @@ import express from 'express';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const dbDir = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+const dbDir =
+  process.env.DATA_DIR || (process.env.RENDER ? '/var/data' : path.join(__dirname, '..', 'data'));
 const dbPath = path.join(dbDir, 'users.db');
 const port = process.env.PORT ? Number(process.env.PORT) : 8787;
 const frontendOrigin = process.env.FRONTEND_ORIGIN || 'https://dcp6.github.io';

@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react';
 
 const apiBaseUrl =
   import.meta.env.VITE_API_BASE_URL ||
-  (import.meta.env.DEV ? '' : 'https://makingmagicmeetups.onrender.com');
+  (import.meta.env.DEV ? '' : 'https://makingmagicmeetups-api.onrender.com');
+const sessionStorageKey = 'making_magic_meetups_session_v1';
 
 const events = [
   {
@@ -69,6 +70,39 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const rawSession = window.localStorage.getItem(sessionStorageKey);
+    if (!rawSession) {
+      return;
+    }
+
+    try {
+      const session = JSON.parse(rawSession);
+      if (!session || !session.user || !session.authHeader) {
+        window.localStorage.removeItem(sessionStorageKey);
+        return;
+      }
+
+      setLoggedInUser(session.user);
+      setLoginAuthHeader(session.authHeader);
+      setLoginIdentifier(session.identifier || '');
+      setLoginPassword(session.password || '');
+      setLoginFeedback(`Welcome back, ${session.user.username || 'user'}.`);
+
+      if (session.user.role === 'admin') {
+        loadAdminAccountsFromApi(session.authHeader);
+      } else if (session.user.role === 'user') {
+        loadUserCardsFromApi(session.authHeader);
+      }
+    } catch (_error) {
+      window.localStorage.removeItem(sessionStorageKey);
+    }
+  }, []);
+
+  function clearStoredSession() {
+    window.localStorage.removeItem(sessionStorageKey);
+  }
+
   async function handleJoinSubmit(event) {
     event.preventDefault();
     setIsSubmitting(true);
@@ -124,6 +158,7 @@ export default function App() {
         setLoggedInUser(null);
         setLoginAuthHeader(null);
         setAdminAccountCount(null);
+        clearStoredSession();
         setLoginFeedback(loginPayload.error || 'Login failed.');
         return;
       }
@@ -131,6 +166,15 @@ export default function App() {
       setLoggedInUser(loginPayload.user || null);
       setLoginAuthHeader(authHeader);
       setLoginFeedback(`Welcome, ${loginPayload.user?.username || 'user'}.`);
+      window.localStorage.setItem(
+        sessionStorageKey,
+        JSON.stringify({
+          user: loginPayload.user || null,
+          authHeader,
+          identifier: trimmedIdentifier,
+          password: submittedPassword
+        })
+      );
 
       if (loginPayload.user?.role === 'admin') {
         await loadAdminAccountsFromApi(authHeader);
@@ -144,10 +188,24 @@ export default function App() {
       setLoginAuthHeader(null);
       setAdminAccountCount(null);
       setAdminAccounts([]);
+      clearStoredSession();
       setLoginFeedback('Could not reach login service.');
     } finally {
       setIsLoginSubmitting(false);
     }
+  }
+
+  function handleLogout() {
+    setLoggedInUser(null);
+    setLoginAuthHeader(null);
+    setAdminAccountCount(null);
+    setAdminAccounts([]);
+    setUploadedCards([]);
+    setCardInputText('');
+    setLoginIdentifier('');
+    setLoginPassword('');
+    setLoginFeedback('Signed out.');
+    clearStoredSession();
   }
 
   async function handleCreateAccount(event) {
@@ -388,6 +446,11 @@ export default function App() {
         <p className="top-login-feedback">
           Admin access: {adminAccountCount} accounts in database.
         </p>
+      ) : null}
+      {loggedInUser ? (
+        <button type="button" onClick={handleLogout}>
+          Logout
+        </button>
       ) : null}
     </div>
   );

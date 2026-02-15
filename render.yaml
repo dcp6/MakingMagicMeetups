@@ -22,4 +22,4 @@ services:
       - key: FRONTEND_ORIGIN
         value: https://dcp6.github.io
       - key: DATA_DIR
-        value: /opt/render/project/src/making-magic-meetups/data
+        value: /var/data
