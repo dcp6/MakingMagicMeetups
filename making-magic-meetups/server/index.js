@@ -223,7 +223,7 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 // Ensure browsers can complete CORS preflight requests (OPTIONS) for all endpoints.
-app.options('*', cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 app.use(express.json());
 
 app.get('/', (_req, res) => {
