@@ -1,4 +1,9 @@
 import React from 'react';
+import { useState } from 'react';
+
+const apiBaseUrl =
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.DEV ? '' : 'https://makingmagicmeetups-api.onrender.com');
 
 const events = [
   {
@@ -19,6 +24,40 @@ const events = [
 ];
 
 export default function App() {
+  const [email, setEmail] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState('');
+
+  async function handleJoinSubmit(event) {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setFeedback('');
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email })
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        setFeedback(payload.error || 'Could not save your signup right now.');
+        return;
+      }
+
+      setEmail('');
+      setFeedback('You are subscribed. Check your inbox for meetup drops.');
+    } catch (_error) {
+      setFeedback('Network error. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <div className="page">
       <header className="topbar">
@@ -60,13 +99,23 @@ export default function App() {
         <section className="join" id="join">
           <h2>Get the weekly meetup drop</h2>
           <p>One email every Tuesday with events, themes, and early RSVP links.</p>
-          <form className="join-form" onSubmit={(event) => event.preventDefault()}>
+          <form className="join-form" onSubmit={handleJoinSubmit}>
             <label htmlFor="email" className="sr-only">
               Email
             </label>
-            <input id="email" type="email" placeholder="you@example.com" required />
-            <button type="submit">Notify Me</button>
+            <input
+              id="email"
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+            <button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : 'Notify Me'}
+            </button>
           </form>
+          {feedback ? <p>{feedback}</p> : null}
         </section>
       </main>
     </div>

@@ -7,3 +7,19 @@ services:
     buildCommand: npm install
     startCommand: npm start
     autoDeploy: true
+
+  - type: web
+    name: makingmagicmeetups-api
+    env: node
+    plan: free
+    rootDir: making-magic-meetups
+    buildCommand: npm install
+    startCommand: npm run start:server
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: FRONTEND_ORIGIN
+        value: https://dcp6.github.io
+      - key: DATA_DIR
+        value: /opt/render/project/src/making-magic-meetups/data

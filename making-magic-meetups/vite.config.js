@@ -6,6 +6,9 @@ const pagesBase = process.env.GITHUB_ACTIONS && repoName ? `/${repoName}/` : '/'
 export default defineConfig({
   base: pagesBase,
   server: {
-    port: 5174
+    port: 5174,
+    proxy: {
+      '/api': 'http://localhost:8787'
+    }
   }
 });
