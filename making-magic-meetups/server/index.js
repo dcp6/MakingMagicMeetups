@@ -16,6 +16,11 @@ const frontendOrigins = String(process.env.FRONTEND_ORIGIN || 'https://dcp6.gith
   .split(',')
   .map((value) => value.trim())
   .filter(Boolean);
+const defaultAllowedOrigins = [
+  'https://www.makingmagicmeetups.com',
+  'https://makingmagicmeetups.com',
+  'https://dcp6.github.io'
+];
 const adminApiKey = process.env.ADMIN_API_KEY || '';
 const adminUsername = process.env.ADMIN_USERNAME || 'admin';
 const adminPassword = process.env.ADMIN_PASSWORD || 'test123';
@@ -336,8 +341,26 @@ function parseBasicAuth(req) {
 const app = express();
 const corsOptions = {
   origin(origin, callback) {
-    const allowedOrigins = [...frontendOrigins, 'http://localhost:5174'];
+    // Keep this permissive enough for our known frontends so deployments don't break on env var drift.
+    // Origin is scheme + host (+ port), no trailing slash.
+    const allowedOrigins = [
+      ...defaultAllowedOrigins,
+      ...frontendOrigins,
+      'http://localhost:5173',
+      'http://localhost:5174'
+    ];
+
+    // Allow all if explicitly configured.
+    if (allowedOrigins.includes('*')) {
+      return callback(null, true);
+    }
+
     if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    // Safety net: accept either apex or www for the production domain.
+    if (/^https:\/\/(www\.)?makingmagicmeetups\.com$/i.test(origin)) {
       return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));
