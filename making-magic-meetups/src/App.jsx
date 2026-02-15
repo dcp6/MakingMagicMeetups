@@ -124,10 +124,10 @@ export default function App() {
 
   async function autoDetectApiBaseUrl() {
     if (import.meta.env.DEV) {
-      return;
+      return null;
     }
     if (isDetectingApiRef.current) {
-      return;
+      return null;
     }
     isDetectingApiRef.current = true;
 
@@ -170,9 +170,10 @@ export default function App() {
           } catch (_error) {
             // ignore
           }
-          return;
+          return candidate;
         }
       }
+      return null;
     } finally {
       isDetectingApiRef.current = false;
     }
@@ -308,18 +309,33 @@ export default function App() {
     const authHeader = `Basic ${btoa(`${trimmedIdentifier}:${submittedPassword}`)}`;
 
     try {
-      const loginResponse = await fetch(`${apiBaseUrl}/api/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          identifier: trimmedIdentifier,
-          password: submittedPassword
-        })
-      });
+      async function attemptLogin(baseUrl) {
+        const loginResponse = await fetch(`${baseUrl}/api/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            identifier: trimmedIdentifier,
+            password: submittedPassword
+          })
+        });
 
-      const loginPayload = await loginResponse.json();
+        const loginPayload = await loginResponse.json().catch(() => ({}));
+        return { loginResponse, loginPayload };
+      }
+
+      const baseUrlUsed = apiBaseUrl;
+      let { loginResponse, loginPayload } = await attemptLogin(baseUrlUsed);
+
+      // If the request failed due to CORS / no-server / wrong API host, auto-detect and retry once.
+      if (!loginResponse.ok && (loginResponse.status === 404 || loginResponse.status === 502)) {
+        const detected = await autoDetectApiBaseUrl();
+        if (detected && detected !== baseUrlUsed) {
+          ({ loginResponse, loginPayload } = await attemptLogin(detected));
+        }
+      }
+
       if (!loginResponse.ok) {
         setLoggedInUser(null);
         setLoginAuthHeader(null);
@@ -350,6 +366,45 @@ export default function App() {
         await loadUserCardsFromApi(authHeader);
       }
     } catch (_error) {
+      const detected = await autoDetectApiBaseUrl();
+      if (detected && detected !== apiBaseUrl) {
+        try {
+          const retryResponse = await fetch(`${detected}/api/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              identifier: trimmedIdentifier,
+              password: submittedPassword
+            })
+          });
+          const retryPayload = await retryResponse.json().catch(() => ({}));
+          if (retryResponse.ok) {
+            setLoggedInUser(retryPayload.user || null);
+            setLoginAuthHeader(authHeader);
+            setLoginFeedback(`Welcome, ${retryPayload.user?.username || 'user'}.`);
+            window.localStorage.setItem(
+              sessionStorageKey,
+              JSON.stringify({
+                user: retryPayload.user || null,
+                authHeader,
+                identifier: trimmedIdentifier,
+                password: submittedPassword
+              })
+            );
+            if (retryPayload.user?.role === 'admin') {
+              await loadAdminAccountsFromApi(authHeader);
+            } else {
+              setAdminAccountCount(null);
+              setAdminAccounts([]);
+              await loadUserCardsFromApi(authHeader);
+            }
+            return;
+          }
+        } catch (_retryError) {
+          // fall through to failure case below
+        }
+      }
+
       setLoggedInUser(null);
       setLoginAuthHeader(null);
       setAdminAccountCount(null);
