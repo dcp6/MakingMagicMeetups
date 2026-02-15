@@ -45,6 +45,7 @@ export default function App() {
   const [adminAccounts, setAdminAccounts] = useState([]);
   const [cardInputText, setCardInputText] = useState('');
   const [uploadedCards, setUploadedCards] = useState([]);
+  const [cardCostTotal, setCardCostTotal] = useState(0);
   const [cardUploadFeedback, setCardUploadFeedback] = useState('');
   const [isCardPriceLoading, setIsCardPriceLoading] = useState(false);
 
@@ -296,16 +297,99 @@ export default function App() {
     };
   }
 
-  function parseCardInput(text) {
-    return text
-      .split(/[\n,]/)
-      .map((card) => card.trim())
-      .filter(Boolean);
+  function parseCardEntries(text) {
+    const lines = text.split(/[\n,]/).map((line) => line.trim()).filter(Boolean);
+    const entryMap = new Map();
+
+    for (const line of lines) {
+      let quantity = 1;
+      let name = line;
+
+      // Patterns supported:
+      // - "2 Lightning Bolt"
+      // - "2x Lightning Bolt"
+      // - "Lightning Bolt x2"
+      // - "Lightning Bolt (2)"
+      const leading = line.match(/^(\d+)\s*x?\s+(.+)$/i);
+      const trailingX = line.match(/^(.+?)\s*x\s*(\d+)$/i);
+      const trailingParen = line.match(/^(.+?)\s*\(\s*(\d+)\s*\)\s*$/);
+
+      if (leading) {
+        quantity = Number(leading[1]);
+        name = leading[2].trim();
+      } else if (trailingX) {
+        name = trailingX[1].trim();
+        quantity = Number(trailingX[2]);
+      } else if (trailingParen) {
+        name = trailingParen[1].trim();
+        quantity = Number(trailingParen[2]);
+      }
+
+      if (!name) {
+        continue;
+      }
+
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        quantity = 1;
+      }
+
+      const key = name.toLowerCase();
+      const existing = entryMap.get(key);
+      if (existing) {
+        existing.quantity += quantity;
+      } else {
+        entryMap.set(key, { cardName: name, quantity });
+      }
+    }
+
+    return Array.from(entryMap.values());
   }
 
-  async function priceCards(cardNames) {
-    const pricedCards = await Promise.all(cardNames.map((card) => fetchCardPriceFromScryfall(card)));
-    setUploadedCards(pricedCards);
+  function expandEntries(entries) {
+    const cards = [];
+    for (const entry of entries) {
+      for (let i = 0; i < entry.quantity; i += 1) {
+        cards.push(entry.cardName);
+      }
+    }
+    return cards;
+  }
+
+  function parseUsdPrice(tcgLowDisplay) {
+    if (!tcgLowDisplay || tcgLowDisplay === 'N/A') {
+      return null;
+    }
+    const normalized = String(tcgLowDisplay).replace(/[^0-9.]/g, '');
+    const value = Number(normalized);
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+    return value;
+  }
+
+  async function priceCards(entries) {
+    const uniqueNames = entries.map((entry) => entry.cardName);
+    const pricedUnique = await Promise.all(uniqueNames.map((name) => fetchCardPriceFromScryfall(name)));
+    const pricedEntries = pricedUnique.map((priced, index) => {
+      const quantity = entries[index]?.quantity ?? 1;
+      const unitUsd = parseUsdPrice(priced.tcgLow);
+      return {
+        ...priced,
+        quantity,
+        unitUsd,
+        lineTotalUsd: unitUsd !== null ? unitUsd * quantity : null
+      };
+    });
+
+    const total = pricedEntries.reduce((sum, entry) => {
+      if (entry.lineTotalUsd === null) {
+        return sum;
+      }
+      return sum + entry.lineTotalUsd;
+    }, 0);
+
+    setUploadedCards(pricedEntries);
+    setCardCostTotal(total);
   }
 
   async function loadAdminAccountsFromApi(authHeader) {
@@ -345,24 +429,39 @@ export default function App() {
     }
 
     const payload = await response.json();
+    const entries = Array.isArray(payload.entries) ? payload.entries : [];
     const cards = Array.isArray(payload.cards) ? payload.cards : [];
-    if (cards.length === 0) {
+    const normalizedEntries =
+      entries.length > 0
+        ? entries.map((entry) => ({
+            cardName: String(entry.cardName || entry.card_name || '').trim(),
+            quantity: Number(entry.quantity) || 1
+          }))
+        : parseCardEntries(cards.join('\n'));
+
+    const filteredEntries = normalizedEntries.filter((entry) => entry.cardName);
+    if (filteredEntries.length === 0) {
       setUploadedCards([]);
+      setCardCostTotal(0);
       return;
     }
 
-    setCardInputText(cards.join('\n'));
+    setCardInputText(
+      filteredEntries.map((entry) => `${entry.quantity} ${entry.cardName}`).join('\n')
+    );
     setIsCardPriceLoading(true);
-    await priceCards(cards);
+    await priceCards(filteredEntries);
     setIsCardPriceLoading(false);
   }
 
   async function handleCardListUpload(event) {
     event.preventDefault();
-    const cards = parseCardInput(cardInputText);
+    const entries = parseCardEntries(cardInputText);
+    const cards = expandEntries(entries);
 
-    if (cards.length === 0) {
+    if (entries.length === 0) {
       setUploadedCards([]);
+      setCardCostTotal(0);
       setCardUploadFeedback('Please add at least one card name.');
       return;
     }
@@ -386,7 +485,7 @@ export default function App() {
           'Content-Type': 'application/json',
           Authorization: authHeader
         },
-        body: JSON.stringify({ cards })
+        body: JSON.stringify({ cards: entries })
       });
 
       const savePayload = await saveResponse.json();
@@ -396,7 +495,7 @@ export default function App() {
         return;
       }
 
-      await priceCards(cards);
+      await priceCards(entries);
       setCardUploadFeedback(
         `Saved ${cards.length} card${cards.length === 1 ? '' : 's'} to ${loggedInUser.username}'s list.`
       );
@@ -528,7 +627,9 @@ export default function App() {
                       <thead>
                         <tr>
                           <th>Card</th>
+                          <th>Qty</th>
                           <th>TCGPlayer Low</th>
+                          <th>Line Total</th>
                           <th>Links / Status</th>
                         </tr>
                       </thead>
@@ -536,7 +637,13 @@ export default function App() {
                         {uploadedCards.map((card, index) => (
                           <tr key={`${card.inputName}-${index}`}>
                             <td>{card.resolvedName}</td>
+                            <td>{card.quantity}</td>
                             <td>{card.tcgLow}</td>
+                            <td>
+                              {card.lineTotalUsd !== null
+                                ? `$${card.lineTotalUsd.toFixed(2)}`
+                                : 'N/A'}
+                            </td>
                             <td>
                               {card.tcgUrl ? (
                                 <a href={card.tcgUrl} target="_blank" rel="noreferrer">
@@ -551,6 +658,13 @@ export default function App() {
                           </tr>
                         ))}
                       </tbody>
+                      <tfoot>
+                        <tr>
+                          <th colSpan={3}>Total</th>
+                          <th>${cardCostTotal.toFixed(2)}</th>
+                          <th />
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 ) : null}
