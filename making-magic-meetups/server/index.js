@@ -179,6 +179,19 @@ app.post('/api/login', (req, res) => {
     return res.status(400).json({ error: 'Please provide username/email and password.' });
   }
 
+  if (identifier === adminUsername.toLowerCase() && password === adminPassword) {
+    return res.json({
+      ok: true,
+      user: {
+        id: 0,
+        username: adminUsername,
+        fullName: 'Administrator',
+        email: `${adminUsername}@local`,
+        role: 'admin'
+      }
+    });
+  }
+
   const account = findAccountForLogin.get(identifier, identifier);
   const providedHash = crypto.createHash('sha256').update(password).digest('hex');
 
@@ -192,7 +205,8 @@ app.post('/api/login', (req, res) => {
       id: account.id,
       username: account.username,
       fullName: account.full_name,
-      email: account.email
+      email: account.email,
+      role: 'user'
     }
   });
 });

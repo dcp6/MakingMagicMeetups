@@ -39,6 +39,7 @@ export default function App() {
   const [loginFeedback, setLoginFeedback] = useState('');
   const [isLoginSubmitting, setIsLoginSubmitting] = useState(false);
   const [loggedInUser, setLoggedInUser] = useState(null);
+  const [adminUserCount, setAdminUserCount] = useState(null);
 
   useEffect(() => {
     function syncRouteFromHash() {
@@ -103,14 +104,34 @@ export default function App() {
       const loginPayload = await loginResponse.json();
       if (!loginResponse.ok) {
         setLoggedInUser(null);
+        setAdminUserCount(null);
         setLoginFeedback(loginPayload.error || 'Login failed.');
         return;
       }
 
       setLoggedInUser(loginPayload.user || null);
       setLoginFeedback(`Welcome, ${loginPayload.user?.username || 'user'}.`);
+
+      if (loginPayload.user?.role === 'admin') {
+        const auth = btoa(`${loginIdentifier}:${loginPassword}`);
+        const usersResponse = await fetch(`${apiBaseUrl}/api/users`, {
+          headers: {
+            Authorization: `Basic ${auth}`
+          }
+        });
+
+        if (usersResponse.ok) {
+          const usersPayload = await usersResponse.json();
+          setAdminUserCount(usersPayload.users?.length ?? 0);
+        } else {
+          setAdminUserCount(null);
+        }
+      } else {
+        setAdminUserCount(null);
+      }
     } catch (_error) {
       setLoggedInUser(null);
+      setAdminUserCount(null);
       setLoginFeedback('Could not reach login service.');
     } finally {
       setIsLoginSubmitting(false);
@@ -185,7 +206,12 @@ export default function App() {
       </form>
       {loginFeedback ? <p className="top-login-feedback">{loginFeedback}</p> : null}
       {loggedInUser ? (
-        <p className="top-login-feedback">Signed in as {loggedInUser.username}</p>
+        <p className="top-login-feedback">
+          Signed in as {loggedInUser.username} ({loggedInUser.role})
+        </p>
+      ) : null}
+      {loggedInUser?.role === 'admin' && adminUserCount !== null ? (
+        <p className="top-login-feedback">Admin access: {adminUserCount} users in database.</p>
       ) : null}
     </div>
   );
