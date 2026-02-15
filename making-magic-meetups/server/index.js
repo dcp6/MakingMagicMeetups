@@ -349,9 +349,7 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 // Ensure browsers can complete CORS preflight requests (OPTIONS) for all endpoints.
-// Some edge stacks will return 404 if OPTIONS isn't explicitly handled.
-// Keep both patterns: Express 4 commonly uses '*' and Express 5 accepts regex routes.
-app.options('*', cors(corsOptions));
+// Note: Express 5 (path-to-regexp v6) does not accept '*' as a route pattern.
 app.options(/.*/, cors(corsOptions));
 app.use(express.json());
 
