@@ -12,7 +12,7 @@ using the root blueprint:
 
 1. In Render, create a **Blueprint** and connect this GitHub repo.
 2. Approve the `makingmagicmeetups-api` service from `render.yaml`.
-3. After deploy, copy the API URL (example: `https://makingmagicmeetups-api.onrender.com`).
+3. After deploy, copy the API URL (example: `https://makingmagicmeetups.onrender.com`).
 4. If Render gives a different hostname than expected, set:
    - GitHub repo variable `VITE_API_BASE_URL` to your Render API URL.
    - Then redeploy GitHub Pages.

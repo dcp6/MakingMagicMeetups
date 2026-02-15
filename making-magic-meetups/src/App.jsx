@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 
 const apiBaseUrl =
   import.meta.env.VITE_API_BASE_URL ||
-  (import.meta.env.DEV ? '' : 'https://makingmagicmeetups-api.onrender.com');
+  (import.meta.env.DEV ? '' : 'https://makingmagicmeetups.onrender.com');
 const sessionStorageKey = 'making_magic_meetups_session_v1';
 
 const events = [
