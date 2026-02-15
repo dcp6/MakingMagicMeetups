@@ -24,6 +24,7 @@ const defaultAllowedOrigins = [
 const adminApiKey = process.env.ADMIN_API_KEY || '';
 const adminUsername = process.env.ADMIN_USERNAME || 'admin';
 const adminPassword = process.env.ADMIN_PASSWORD || 'test123';
+const googleMapsApiKey = String(process.env.GOOGLE_MAPS_API_KEY || '').trim();
 
 fs.mkdirSync(dbDir, { recursive: true });
 
@@ -59,6 +60,21 @@ try {
   db.exec(`ALTER TABLE accounts ADD COLUMN password_plain TEXT`);
 } catch (_error) {
   // Column already exists; ignore migration error.
+}
+
+for (const column of [
+  'preferred_store_place_id TEXT',
+  'preferred_store_name TEXT',
+  'preferred_store_address TEXT',
+  'preferred_store_url TEXT',
+  'preferred_store_website TEXT',
+  'preferred_store_phone TEXT'
+]) {
+  try {
+    db.exec(`ALTER TABLE accounts ADD COLUMN ${column}`);
+  } catch (_error) {
+    // Column already exists; ignore migration error.
+  }
 }
 
 db.exec(`
@@ -97,7 +113,18 @@ const findAccountForLogin = db.prepare(`
 `);
 
 const findAccountById = db.prepare(`
-  SELECT id, username, full_name, email, created_at
+  SELECT
+    id,
+    username,
+    full_name,
+    email,
+    created_at,
+    preferred_store_place_id,
+    preferred_store_name,
+    preferred_store_address,
+    preferred_store_url,
+    preferred_store_website,
+    preferred_store_phone
   FROM accounts
   WHERE id = ?
   LIMIT 1
@@ -121,6 +148,17 @@ const updateAccountPassword = db.prepare(`
   UPDATE accounts
   SET password_hash = ?,
       password_plain = ?
+  WHERE id = ?
+`);
+
+const updatePreferredStore = db.prepare(`
+  UPDATE accounts
+  SET preferred_store_place_id = ?,
+      preferred_store_name = ?,
+      preferred_store_address = ?,
+      preferred_store_url = ?,
+      preferred_store_website = ?,
+      preferred_store_phone = ?
   WHERE id = ?
 `);
 
@@ -345,6 +383,46 @@ function parseBasicAuth(req) {
   }
 }
 
+function ensureLoggedInUser(req, res) {
+  const credentials = parseBasicAuth(req);
+  if (!credentials) {
+    res.status(401).json({ error: 'Unauthorized.' });
+    return null;
+  }
+
+  const user = authenticateLogin(credentials.identifier, credentials.password);
+  if (!user || user.role !== 'user') {
+    res.status(401).json({ error: 'Unauthorized.' });
+    return null;
+  }
+
+  return user;
+}
+
+async function fetchGooglePlacesJson(endpoint, params) {
+  if (!googleMapsApiKey) {
+    return { ok: false, status: 500, json: { error: 'Google Maps API key not configured.' } };
+  }
+
+  const url = new URL(endpoint);
+  for (const [key, value] of Object.entries(params || {})) {
+    if (value === null || value === undefined || value === '') {
+      continue;
+    }
+    url.searchParams.set(key, String(value));
+  }
+  url.searchParams.set('key', googleMapsApiKey);
+
+  const response = await fetch(url.toString(), { method: 'GET' });
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch (_error) {
+    payload = null;
+  }
+  return { ok: response.ok, status: response.status, json: payload };
+}
+
 const app = express();
 const corsOptions = {
   origin(origin, callback) {
@@ -396,6 +474,158 @@ app.get('/', (_req, res) => {
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
+});
+
+app.get('/api/stores/search', async (req, res) => {
+  const user = ensureLoggedInUser(req, res);
+  if (!user) {
+    return;
+  }
+
+  const query = String(req.query?.q || '').trim();
+  if (!query || query.length < 2) {
+    return res.status(400).json({ error: 'Please provide a search query.' });
+  }
+
+  try {
+    const result = await fetchGooglePlacesJson(
+      'https://maps.googleapis.com/maps/api/place/textsearch/json',
+      { query }
+    );
+
+    if (!result.ok) {
+      return res.status(502).json({ error: 'Store search failed.' });
+    }
+
+    const rows = Array.isArray(result.json?.results) ? result.json.results : [];
+    const stores = rows.slice(0, 10).map((row) => ({
+      placeId: row.place_id || null,
+      name: row.name || null,
+      address: row.formatted_address || null,
+      rating: row.rating ?? null,
+      userRatingsTotal: row.user_ratings_total ?? null,
+      businessStatus: row.business_status ?? null
+    }));
+
+    return res.json({ ok: true, stores });
+  } catch (_error) {
+    return res.status(500).json({ error: 'Store search failed.' });
+  }
+});
+
+app.get('/api/stores/details', async (req, res) => {
+  const user = ensureLoggedInUser(req, res);
+  if (!user) {
+    return;
+  }
+
+  const placeId = String(req.query?.placeId || '').trim();
+  if (!placeId) {
+    return res.status(400).json({ error: 'Missing placeId.' });
+  }
+
+  try {
+    const result = await fetchGooglePlacesJson(
+      'https://maps.googleapis.com/maps/api/place/details/json',
+      {
+        place_id: placeId,
+        fields: 'place_id,name,formatted_address,website,url,formatted_phone_number'
+      }
+    );
+
+    if (!result.ok) {
+      return res.status(502).json({ error: 'Store lookup failed.' });
+    }
+
+    const row = result.json?.result || null;
+    if (!row) {
+      return res.status(404).json({ error: 'Store not found.' });
+    }
+
+    return res.json({
+      ok: true,
+      store: {
+        placeId: row.place_id || placeId,
+        name: row.name || null,
+        address: row.formatted_address || null,
+        website: row.website || null,
+        url: row.url || null,
+        phone: row.formatted_phone_number || null
+      }
+    });
+  } catch (_error) {
+    return res.status(500).json({ error: 'Store lookup failed.' });
+  }
+});
+
+app.patch('/api/me/preferred-store', async (req, res) => {
+  const user = ensureLoggedInUser(req, res);
+  if (!user) {
+    return;
+  }
+
+  const placeId =
+    req.body && Object.prototype.hasOwnProperty.call(req.body, 'placeId')
+      ? String(req.body.placeId || '').trim()
+      : null;
+
+  if (!placeId) {
+    updatePreferredStore.run(null, null, null, null, null, null, user.id);
+    const account = findAccountById.get(user.id);
+    return res.json({
+      ok: true,
+      preferredStore: null,
+      account: {
+        id: account.id,
+        username: account.username,
+        fullName: account.full_name,
+        email: account.email,
+        createdAt: account.created_at
+      }
+    });
+  }
+
+  try {
+    const details = await fetchGooglePlacesJson(
+      'https://maps.googleapis.com/maps/api/place/details/json',
+      {
+        place_id: placeId,
+        fields: 'place_id,name,formatted_address,website,url,formatted_phone_number'
+      }
+    );
+    if (!details.ok) {
+      return res.status(502).json({ error: 'Store lookup failed.' });
+    }
+    const row = details.json?.result || null;
+    if (!row) {
+      return res.status(404).json({ error: 'Store not found.' });
+    }
+
+    updatePreferredStore.run(
+      row.place_id || placeId,
+      row.name || null,
+      row.formatted_address || null,
+      row.url || null,
+      row.website || null,
+      row.formatted_phone_number || null,
+      user.id
+    );
+
+    const account = findAccountById.get(user.id);
+    return res.json({
+      ok: true,
+      preferredStore: {
+        placeId: account.preferred_store_place_id || null,
+        name: account.preferred_store_name || null,
+        address: account.preferred_store_address || null,
+        url: account.preferred_store_url || null,
+        website: account.preferred_store_website || null,
+        phone: account.preferred_store_phone || null
+      }
+    });
+  } catch (_error) {
+    return res.status(500).json({ error: 'Failed to save preferred store.' });
+  }
 });
 
 app.post('/api/admin/login', (req, res) => {
@@ -487,14 +717,9 @@ app.post('/api/login', (req, res) => {
 });
 
 app.get('/api/me', (req, res) => {
-  const credentials = parseBasicAuth(req);
-  if (!credentials) {
-    return res.status(401).json({ error: 'Unauthorized.' });
-  }
-
-  const user = authenticateLogin(credentials.identifier, credentials.password);
-  if (!user || user.role !== 'user') {
-    return res.status(401).json({ error: 'Unauthorized.' });
+  const user = ensureLoggedInUser(req, res);
+  if (!user) {
+    return;
   }
 
   const account = findAccountById.get(user.id);
@@ -509,7 +734,17 @@ app.get('/api/me', (req, res) => {
       username: account.username,
       fullName: account.full_name,
       email: account.email,
-      createdAt: account.created_at
+      createdAt: account.created_at,
+      preferredStore: account.preferred_store_place_id
+        ? {
+            placeId: account.preferred_store_place_id || null,
+            name: account.preferred_store_name || null,
+            address: account.preferred_store_address || null,
+            url: account.preferred_store_url || null,
+            website: account.preferred_store_website || null,
+            phone: account.preferred_store_phone || null
+          }
+        : null
     }
   });
 });

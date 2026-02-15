@@ -76,6 +76,12 @@ export default function App() {
   const [settingsNewPassword, setSettingsNewPassword] = useState('');
   const [settingsFeedback, setSettingsFeedback] = useState('');
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
+  const [preferredStore, setPreferredStore] = useState(null);
+  const [storeSearchQuery, setStoreSearchQuery] = useState('');
+  const [storeSearchResults, setStoreSearchResults] = useState([]);
+  const [storeSearchFeedback, setStoreSearchFeedback] = useState('');
+  const [isStoreSearching, setIsStoreSearching] = useState(false);
+  const [isPreferredStoreSaving, setIsPreferredStoreSaving] = useState(false);
   const [loginServiceStatus, setLoginServiceStatus] = useState('unknown');
   const [loginServiceLastCheckedAt, setLoginServiceLastCheckedAt] = useState(null);
   const [loginServiceLastStatusCode, setLoginServiceLastStatusCode] = useState(null);
@@ -230,12 +236,92 @@ export default function App() {
         setSettingsUsername(payload.account?.username || '');
         setSettingsFullName(payload.account?.fullName || '');
         setSettingsEmail(payload.account?.email || '');
+        setPreferredStore(payload.account?.preferredStore || null);
         setSettingsFeedback('');
       } catch (_error) {
         setSettingsFeedback('Could not load settings.');
       }
     })();
   }, [route, loggedInUser, loginAuthHeader, apiBaseUrl]);
+
+  async function handleStoreSearch(event) {
+    event.preventDefault();
+    setStoreSearchFeedback('');
+
+    if (!loggedInUser || loggedInUser.role !== 'user') {
+      setStoreSearchFeedback('Please log in with a user account.');
+      return;
+    }
+    if (!loginAuthHeader) {
+      setStoreSearchFeedback('Please log in again.');
+      return;
+    }
+
+    const query = storeSearchQuery.trim();
+    if (!query) {
+      setStoreSearchFeedback('Enter a store name or city to search.');
+      return;
+    }
+
+    setIsStoreSearching(true);
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/api/stores/search?q=${encodeURIComponent(query)}`,
+        {
+          headers: { Authorization: loginAuthHeader }
+        }
+      );
+      const payload = await response.json();
+      if (!response.ok) {
+        setStoreSearchResults([]);
+        setStoreSearchFeedback(payload.error || 'Could not search stores.');
+        return;
+      }
+      setStoreSearchResults(Array.isArray(payload.stores) ? payload.stores : []);
+      setStoreSearchFeedback('');
+    } catch (_error) {
+      setStoreSearchResults([]);
+      setStoreSearchFeedback('Could not search stores.');
+    } finally {
+      setIsStoreSearching(false);
+    }
+  }
+
+  async function savePreferredStore(placeId) {
+    setStoreSearchFeedback('');
+
+    if (!loggedInUser || loggedInUser.role !== 'user') {
+      setStoreSearchFeedback('Please log in with a user account.');
+      return;
+    }
+    if (!loginAuthHeader) {
+      setStoreSearchFeedback('Please log in again.');
+      return;
+    }
+
+    setIsPreferredStoreSaving(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/me/preferred-store`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: loginAuthHeader
+        },
+        body: JSON.stringify({ placeId: placeId || null })
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setStoreSearchFeedback(payload.error || 'Could not save preferred store.');
+        return;
+      }
+      setPreferredStore(payload.preferredStore || null);
+      setStoreSearchFeedback(placeId ? 'Preferred store saved.' : 'Preferred store cleared.');
+    } catch (_error) {
+      setStoreSearchFeedback('Could not save preferred store.');
+    } finally {
+      setIsPreferredStoreSaving(false);
+    }
+  }
 
   useEffect(() => {
     const rawSession = window.localStorage.getItem(sessionStorageKey);
@@ -1209,68 +1295,145 @@ export default function App() {
             {!loggedInUser || loggedInUser.role !== 'user' ? (
               <p>Please log in with a user account to edit settings.</p>
             ) : (
-              <form className="join-form" onSubmit={handleSaveSettings}>
-                <label htmlFor="settings-username" className="sr-only">
-                  Username
-                </label>
-                <input
-                  id="settings-username"
-                  type="text"
-                  placeholder="username"
-                  value={settingsUsername}
-                  readOnly
-                  aria-readonly="true"
-                  title="Username cannot be changed."
-                />
-                <label htmlFor="settings-fullname" className="sr-only">
-                  Full Name
-                </label>
-                <input
-                  id="settings-fullname"
-                  type="text"
-                  placeholder="Full name"
-                  value={settingsFullName}
-                  onChange={(event) => setSettingsFullName(event.target.value)}
-                  required
-                />
-                <label htmlFor="settings-email" className="sr-only">
-                  Email
-                </label>
-                <input
-                  id="settings-email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={settingsEmail}
-                  onChange={(event) => setSettingsEmail(event.target.value)}
-                  required
-                />
-                <label htmlFor="settings-password" className="sr-only">
-                  New Password
-                </label>
-                <input
-                  id="settings-password"
-                  type="password"
-                  placeholder="New password (optional)"
-                  value={settingsNewPassword}
-                  onChange={(event) => setSettingsNewPassword(event.target.value)}
-                  minLength={6}
-                />
-                <label htmlFor="settings-current-password" className="sr-only">
-                  Current Password
-                </label>
-                <input
-                  id="settings-current-password"
-                  type="password"
-                  placeholder="Current password (required to change password)"
-                  value={settingsCurrentPassword}
-                  onChange={(event) => setSettingsCurrentPassword(event.target.value)}
-                  required={Boolean(settingsNewPassword)}
-                  disabled={!settingsNewPassword}
-                />
-                <button type="submit" disabled={isSettingsSaving}>
-                  {isSettingsSaving ? 'Saving...' : 'Save Settings'}
-                </button>
-              </form>
+              <>
+                <form className="join-form" onSubmit={handleSaveSettings}>
+                  <label htmlFor="settings-username" className="sr-only">
+                    Username
+                  </label>
+                  <input
+                    id="settings-username"
+                    type="text"
+                    placeholder="username"
+                    value={settingsUsername}
+                    readOnly
+                    aria-readonly="true"
+                    title="Username cannot be changed."
+                  />
+                  <label htmlFor="settings-fullname" className="sr-only">
+                    Full Name
+                  </label>
+                  <input
+                    id="settings-fullname"
+                    type="text"
+                    placeholder="Full name"
+                    value={settingsFullName}
+                    onChange={(event) => setSettingsFullName(event.target.value)}
+                    required
+                  />
+                  <label htmlFor="settings-email" className="sr-only">
+                    Email
+                  </label>
+                  <input
+                    id="settings-email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={settingsEmail}
+                    onChange={(event) => setSettingsEmail(event.target.value)}
+                    required
+                  />
+                  <label htmlFor="settings-password" className="sr-only">
+                    New Password
+                  </label>
+                  <input
+                    id="settings-password"
+                    type="password"
+                    placeholder="New password (optional)"
+                    value={settingsNewPassword}
+                    onChange={(event) => setSettingsNewPassword(event.target.value)}
+                    minLength={6}
+                  />
+                  <label htmlFor="settings-current-password" className="sr-only">
+                    Current Password
+                  </label>
+                  <input
+                    id="settings-current-password"
+                    type="password"
+                    placeholder="Current password (required to change password)"
+                    value={settingsCurrentPassword}
+                    onChange={(event) => setSettingsCurrentPassword(event.target.value)}
+                    required={Boolean(settingsNewPassword)}
+                    disabled={!settingsNewPassword}
+                  />
+                  <button type="submit" disabled={isSettingsSaving}>
+                    {isSettingsSaving ? 'Saving...' : 'Save Settings'}
+                  </button>
+                </form>
+
+                <div className="settings-panel">
+                  <h2>Preferred Store</h2>
+                  {preferredStore ? (
+                    <div className="settings-store">
+                      <p className="settings-store-name">{preferredStore.name || 'Preferred store'}</p>
+                      {preferredStore.address ? (
+                        <p className="settings-store-address">{preferredStore.address}</p>
+                      ) : null}
+                      {preferredStore.website ? (
+                        <p>
+                          <a href={preferredStore.website} target="_blank" rel="noreferrer">
+                            Website
+                          </a>
+                        </p>
+                      ) : preferredStore.url ? (
+                        <p>
+                          <a href={preferredStore.url} target="_blank" rel="noreferrer">
+                            Google Listing
+                          </a>
+                        </p>
+                      ) : null}
+                      {preferredStore.phone ? (
+                        <p className="settings-store-address">{preferredStore.phone}</p>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => savePreferredStore(null)}
+                        disabled={isPreferredStoreSaving}
+                      >
+                        {isPreferredStoreSaving ? 'Clearing...' : 'Clear Preferred Store'}
+                      </button>
+                    </div>
+                  ) : (
+                    <p>No preferred store selected yet.</p>
+                  )}
+
+                  <form className="join-form" onSubmit={handleStoreSearch}>
+                    <label htmlFor="store-search" className="sr-only">
+                      Search stores
+                    </label>
+                    <input
+                      id="store-search"
+                      type="text"
+                      placeholder="Search store name or city"
+                      value={storeSearchQuery}
+                      onChange={(event) => setStoreSearchQuery(event.target.value)}
+                    />
+                    <button type="submit" disabled={isStoreSearching}>
+                      {isStoreSearching ? 'Searching...' : 'Search'}
+                    </button>
+                  </form>
+
+                  {storeSearchFeedback ? <p>{storeSearchFeedback}</p> : null}
+
+                  {storeSearchResults.length ? (
+                    <div className="store-results">
+                      {storeSearchResults.map((store) => (
+                        <div key={store.placeId || store.name} className="store-result">
+                          <div className="store-result-main">
+                            <p className="store-result-name">{store.name}</p>
+                            {store.address ? <p className="store-result-address">{store.address}</p> : null}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => savePreferredStore(store.placeId)}
+                            disabled={isPreferredStoreSaving || !store.placeId}
+                          >
+                            {isPreferredStoreSaving ? 'Saving...' : 'Set Preferred'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </>
             )}
             {settingsFeedback ? <p>{settingsFeedback}</p> : null}
           </section>

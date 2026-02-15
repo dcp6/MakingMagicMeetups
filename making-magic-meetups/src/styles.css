@@ -335,6 +335,80 @@ h1 {
   cursor: pointer;
 }
 
+.settings-panel {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--stroke);
+}
+
+.settings-panel h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.settings-store {
+  border: 1px solid var(--stroke);
+  border-radius: 0.85rem;
+  padding: 0.85rem;
+  background: rgba(255, 255, 255, 0.85);
+  margin-bottom: 0.85rem;
+}
+
+.settings-store-name {
+  margin: 0;
+  font-weight: 800;
+}
+
+.settings-store-address {
+  margin: 0.25rem 0 0;
+  color: var(--text-700);
+}
+
+.store-results {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.store-result {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  border: 1px solid var(--stroke);
+  border-radius: 0.85rem;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.store-result-main {
+  min-width: 0;
+}
+
+.store-result-name {
+  margin: 0;
+  font-weight: 800;
+}
+
+.store-result-address {
+  margin: 0.25rem 0 0;
+  color: var(--text-700);
+  font-size: 0.9rem;
+}
+
+.store-result button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 0.62rem;
+  padding: 0 0.9rem;
+  font-weight: 800;
+  background: var(--sun-400);
+  color: #1b2f45;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
 .dashboard-tool {
   margin-top: 1rem;
   display: flex;
