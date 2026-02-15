@@ -31,11 +31,29 @@ db.exec(`
 db.exec(`
   CREATE TABLE IF NOT EXISTS accounts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
     full_name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+`);
+
+try {
+  db.exec(`ALTER TABLE accounts ADD COLUMN username TEXT`);
+} catch (_error) {
+  // Column already exists; ignore migration error.
+}
+
+db.exec(`
+  UPDATE accounts
+  SET username = 'user' || id
+  WHERE username IS NULL OR TRIM(username) = ''
+`);
+
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS accounts_username_unique
+  ON accounts (username)
 `);
 
 const insertUser = db.prepare(`
@@ -51,8 +69,8 @@ const listUsers = db.prepare(`
 `);
 
 const insertAccount = db.prepare(`
-  INSERT INTO accounts (full_name, email, password_hash)
-  VALUES (?, ?, ?)
+  INSERT INTO accounts (username, full_name, email, password_hash)
+  VALUES (?, ?, ?, ?)
 `);
 
 const app = express();
@@ -108,9 +126,16 @@ app.post('/api/users', (req, res) => {
 });
 
 app.post('/api/accounts', (req, res) => {
+  const username = String(req.body?.username || '').trim().toLowerCase();
   const fullName = String(req.body?.fullName || '').trim();
   const email = String(req.body?.email || '').trim().toLowerCase();
   const password = String(req.body?.password || '');
+
+  if (!username || !/^[a-z0-9_]{3,24}$/.test(username)) {
+    return res.status(400).json({
+      error: 'Username must be 3-24 chars and use lowercase letters, numbers, or underscores.'
+    });
+  }
 
   if (!fullName || fullName.length < 2) {
     return res.status(400).json({ error: 'Please provide your full name.' });
@@ -126,11 +151,13 @@ app.post('/api/accounts', (req, res) => {
 
   try {
     const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
-    const result = insertAccount.run(fullName, email, passwordHash);
-    return res.status(201).json({ id: result.lastInsertRowid, email, fullName });
+    const result = insertAccount.run(username, fullName, email, passwordHash);
+    return res.status(201).json({ id: result.lastInsertRowid, username, email, fullName });
   } catch (error) {
     if (String(error?.message || '').includes('UNIQUE constraint failed')) {
-      return res.status(409).json({ error: 'An account with this email already exists.' });
+      return res
+        .status(409)
+        .json({ error: 'An account with this email or username already exists.' });
     }
 
     return res.status(500).json({ error: 'Failed to create account.' });

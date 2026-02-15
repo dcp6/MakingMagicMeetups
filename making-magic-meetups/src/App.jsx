@@ -29,6 +29,7 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [accountName, setAccountName] = useState('');
+  const [accountUsername, setAccountUsername] = useState('');
   const [accountEmail, setAccountEmail] = useState('');
   const [accountPassword, setAccountPassword] = useState('');
   const [accountFeedback, setAccountFeedback] = useState('');
@@ -147,6 +148,7 @@ export default function App() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
+          username: accountUsername,
           fullName: accountName,
           email: accountEmail,
           password: accountPassword
@@ -160,6 +162,7 @@ export default function App() {
       }
 
       setAccountName('');
+      setAccountUsername('');
       setAccountEmail('');
       setAccountPassword('');
       setAccountFeedback('Account created successfully. You can now log in.');
@@ -197,6 +200,20 @@ export default function App() {
                 value={accountName}
                 onChange={(event) => setAccountName(event.target.value)}
                 required
+              />
+              <label htmlFor="create-username" className="sr-only">
+                Username
+              </label>
+              <input
+                id="create-username"
+                type="text"
+                placeholder="username"
+                value={accountUsername}
+                onChange={(event) => setAccountUsername(event.target.value.toLowerCase())}
+                required
+                minLength={3}
+                maxLength={24}
+                pattern="[a-z0-9_]+"
               />
               <label htmlFor="create-email" className="sr-only">
                 Email
