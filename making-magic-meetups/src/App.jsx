@@ -40,6 +40,9 @@ export default function App() {
   const [isLoginSubmitting, setIsLoginSubmitting] = useState(false);
   const [loggedInUser, setLoggedInUser] = useState(null);
   const [adminUserCount, setAdminUserCount] = useState(null);
+  const [cardInputText, setCardInputText] = useState('');
+  const [uploadedCards, setUploadedCards] = useState([]);
+  const [cardUploadFeedback, setCardUploadFeedback] = useState('');
 
   useEffect(() => {
     function syncRouteFromHash() {
@@ -184,6 +187,23 @@ export default function App() {
     }
   }
 
+  function handleCardListUpload(event) {
+    event.preventDefault();
+    const cards = cardInputText
+      .split(/[\n,]/)
+      .map((card) => card.trim())
+      .filter(Boolean);
+
+    if (cards.length === 0) {
+      setUploadedCards([]);
+      setCardUploadFeedback('Please add at least one card name.');
+      return;
+    }
+
+    setUploadedCards(cards);
+    setCardUploadFeedback(`Loaded ${cards.length} card${cards.length === 1 ? '' : 's'}.`);
+  }
+
   const headerLogin = (
     <div className="topbar-right">
       <form className="top-login-form" onSubmit={handleUserLogin}>
@@ -246,7 +266,29 @@ export default function App() {
           <section className="join">
             <p className="kicker">Dashboard</p>
             <h1>Dashboard</h1>
-            <p>This is your dashboard workspace. We will build this out next.</p>
+            <p>This is your dashboard workspace. Upload your card list below.</p>
+            <form className="dashboard-tool" onSubmit={handleCardListUpload}>
+              <label htmlFor="card-list-input">Magic: The Gathering card list</label>
+              <textarea
+                id="card-list-input"
+                placeholder="Example: Black Lotus&#10;Lightning Bolt&#10;Sol Ring"
+                value={cardInputText}
+                onChange={(event) => setCardInputText(event.target.value)}
+                rows={8}
+              />
+              <button type="submit">Upload Card List</button>
+            </form>
+            {cardUploadFeedback ? <p>{cardUploadFeedback}</p> : null}
+            {uploadedCards.length > 0 ? (
+              <div className="card-upload-results">
+                <h2>Uploaded Cards</h2>
+                <ul>
+                  {uploadedCards.map((card, index) => (
+                    <li key={`${card}-${index}`}>{card}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </section>
         </main>
       </div>
