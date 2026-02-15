@@ -208,17 +208,22 @@ function parseBasicAuth(req) {
 }
 
 const app = express();
-app.use(
-  cors({
-    origin(origin, callback) {
-      const allowedOrigins = [frontendOrigin, 'http://localhost:5174'];
-      if (!origin || allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error('Not allowed by CORS'));
+const corsOptions = {
+  origin(origin, callback) {
+    const allowedOrigins = [frontendOrigin, 'http://localhost:5174'];
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
     }
-  })
-);
+    return callback(new Error('Not allowed by CORS'));
+  },
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Api-Key'],
+  optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
+// Ensure browsers can complete CORS preflight requests (OPTIONS) for all endpoints.
+app.options('*', cors(corsOptions));
 app.use(express.json());
 
 app.get('/', (_req, res) => {
