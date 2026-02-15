@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 import cors from 'cors';
 import Database from 'better-sqlite3';
 import express from 'express';
@@ -27,6 +28,16 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    full_name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 const insertUser = db.prepare(`
   INSERT INTO users (email)
   VALUES (?)
@@ -37,6 +48,11 @@ const listUsers = db.prepare(`
   FROM users
   ORDER BY id DESC
   LIMIT 500
+`);
+
+const insertAccount = db.prepare(`
+  INSERT INTO accounts (full_name, email, password_hash)
+  VALUES (?, ?, ?)
 `);
 
 const app = express();
@@ -88,6 +104,36 @@ app.post('/api/users', (req, res) => {
     }
 
     return res.status(500).json({ error: 'Failed to save user.' });
+  }
+});
+
+app.post('/api/accounts', (req, res) => {
+  const fullName = String(req.body?.fullName || '').trim();
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const password = String(req.body?.password || '');
+
+  if (!fullName || fullName.length < 2) {
+    return res.status(400).json({ error: 'Please provide your full name.' });
+  }
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'Please provide a valid email.' });
+  }
+
+  if (!password || password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  }
+
+  try {
+    const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
+    const result = insertAccount.run(fullName, email, passwordHash);
+    return res.status(201).json({ id: result.lastInsertRowid, email, fullName });
+  } catch (error) {
+    if (String(error?.message || '').includes('UNIQUE constraint failed')) {
+      return res.status(409).json({ error: 'An account with this email already exists.' });
+    }
+
+    return res.status(500).json({ error: 'Failed to create account.' });
   }
 });
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const apiBaseUrl =
   import.meta.env.VITE_API_BASE_URL ||
@@ -24,15 +24,34 @@ const events = [
 ];
 
 export default function App() {
+  const [route, setRoute] = useState('home');
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [accountName, setAccountName] = useState('');
+  const [accountEmail, setAccountEmail] = useState('');
+  const [accountPassword, setAccountPassword] = useState('');
+  const [accountFeedback, setAccountFeedback] = useState('');
+  const [isAccountSubmitting, setIsAccountSubmitting] = useState(false);
   const [adminName, setAdminName] = useState('admin');
   const [adminPass, setAdminPass] = useState('test123');
   const [adminError, setAdminError] = useState('');
   const [adminUsers, setAdminUsers] = useState([]);
   const [isAdminLoading, setIsAdminLoading] = useState(false);
   const [isAdminAuthed, setIsAdminAuthed] = useState(false);
+
+  useEffect(() => {
+    function syncRouteFromHash() {
+      setRoute(window.location.hash === '#/create-account' ? 'create-account' : 'home');
+    }
+
+    syncRouteFromHash();
+    window.addEventListener('hashchange', syncRouteFromHash);
+
+    return () => {
+      window.removeEventListener('hashchange', syncRouteFromHash);
+    };
+  }, []);
 
   async function handleJoinSubmit(event) {
     event.preventDefault();
@@ -110,10 +129,107 @@ export default function App() {
     } catch (_error) {
       setIsAdminAuthed(false);
       setAdminUsers([]);
-      setAdminError('Could not reach admin API.');
+      setAdminError('Could not reach login service.');
     } finally {
       setIsAdminLoading(false);
     }
+  }
+
+  async function handleCreateAccount(event) {
+    event.preventDefault();
+    setIsAccountSubmitting(true);
+    setAccountFeedback('');
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/accounts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          fullName: accountName,
+          email: accountEmail,
+          password: accountPassword
+        })
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        setAccountFeedback(payload.error || 'Could not create account.');
+        return;
+      }
+
+      setAccountName('');
+      setAccountEmail('');
+      setAccountPassword('');
+      setAccountFeedback('Account created successfully. You can now log in.');
+    } catch (_error) {
+      setAccountFeedback('Network error. Please try again.');
+    } finally {
+      setIsAccountSubmitting(false);
+    }
+  }
+
+  if (route === 'create-account') {
+    return (
+      <div className="page">
+        <header className="topbar">
+          <p className="logo">Making Magic Meetups</p>
+          <nav className="topnav">
+            <a href="#">Home</a>
+            <a href="#admin">Login</a>
+          </nav>
+        </header>
+
+        <main>
+          <section className="join">
+            <p className="kicker">Create Account</p>
+            <h1>Create your account</h1>
+            <p>Enter your basic information to create an account.</p>
+            <form className="join-form" onSubmit={handleCreateAccount}>
+              <label htmlFor="create-full-name" className="sr-only">
+                Full Name
+              </label>
+              <input
+                id="create-full-name"
+                type="text"
+                placeholder="Full name"
+                value={accountName}
+                onChange={(event) => setAccountName(event.target.value)}
+                required
+              />
+              <label htmlFor="create-email" className="sr-only">
+                Email
+              </label>
+              <input
+                id="create-email"
+                type="email"
+                placeholder="you@example.com"
+                value={accountEmail}
+                onChange={(event) => setAccountEmail(event.target.value)}
+                required
+              />
+              <label htmlFor="create-password" className="sr-only">
+                Password
+              </label>
+              <input
+                id="create-password"
+                type="password"
+                placeholder="Create password"
+                value={accountPassword}
+                onChange={(event) => setAccountPassword(event.target.value)}
+                required
+                minLength={6}
+              />
+              <button type="submit" disabled={isAccountSubmitting}>
+                {isAccountSubmitting ? 'Creating...' : 'Create Account'}
+              </button>
+            </form>
+            {accountFeedback ? <p>{accountFeedback}</p> : null}
+          </section>
+        </main>
+      </div>
+    );
   }
 
   return (
@@ -129,14 +245,11 @@ export default function App() {
       <main>
         <section className="hero">
           <p className="kicker">Landing Page</p>
-          <h1>Modern meetups for curious people.</h1>
-          <p>
-            Making Magic Meetups creates welcoming, high-energy gatherings that help strangers
-            connect quickly through playful formats and intentional hosting.
-          </p>
+          <h1>Enabling Trading Through a Digital Service</h1>
+          <p>We strive to connect you to other players who just want to trade cards, am I right?</p>
           <div className="hero-actions">
-            <a className="button primary" href="#join">
-              Get Invite Access
+            <a className="button primary" href="#/create-account">
+              Create Account
             </a>
             <a className="button secondary" href="#events">
               View Upcoming
@@ -177,8 +290,8 @@ export default function App() {
         </section>
 
         <section className="join" id="admin">
-          <h2>Admin Access</h2>
-          <p>Use admin credentials to view subscriber records.</p>
+          <h2>User Login</h2>
+          <p>Use your credentials to view subscriber records.</p>
           <form className="join-form" onSubmit={handleAdminLogin}>
             <label htmlFor="admin-username" className="sr-only">
               Username
@@ -203,7 +316,7 @@ export default function App() {
               required
             />
             <button type="submit" disabled={isAdminLoading}>
-              {isAdminLoading ? 'Checking...' : 'Admin Login'}
+              {isAdminLoading ? 'Checking...' : 'User Login'}
             </button>
           </form>
           {adminError ? <p>{adminError}</p> : null}
