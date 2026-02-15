@@ -55,6 +55,23 @@ body {
   letter-spacing: 0.03em;
 }
 
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.topbar-link {
+  text-decoration: none;
+  color: var(--text-900);
+  border: 1px solid var(--stroke);
+  background: #ffffff;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
 .topnav {
   display: flex;
   gap: 0.7rem;

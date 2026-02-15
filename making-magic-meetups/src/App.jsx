@@ -43,7 +43,16 @@ export default function App() {
 
   useEffect(() => {
     function syncRouteFromHash() {
-      setRoute(window.location.hash === '#/create-account' ? 'create-account' : 'home');
+      const hash = window.location.hash;
+      if (hash === '#/create-account') {
+        setRoute('create-account');
+        return;
+      }
+      if (hash === '#/dashboard') {
+        setRoute('dashboard');
+        return;
+      }
+      setRoute('home');
     }
 
     syncRouteFromHash();
@@ -216,11 +225,39 @@ export default function App() {
     </div>
   );
 
+  const headerBrand = (
+    <div className="topbar-left">
+      <p className="logo">Making Magic Meetups</p>
+      <a className="topbar-link" href="#/dashboard">
+        Dashboard
+      </a>
+    </div>
+  );
+
+  if (route === 'dashboard') {
+    return (
+      <div className="page">
+        <header className="topbar">
+          {headerBrand}
+          {headerLogin}
+        </header>
+
+        <main>
+          <section className="join">
+            <p className="kicker">Dashboard</p>
+            <h1>Dashboard</h1>
+            <p>This is your dashboard workspace. We will build this out next.</p>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
   if (route === 'create-account') {
     return (
       <div className="page">
         <header className="topbar">
-          <p className="logo">Making Magic Meetups</p>
+          {headerBrand}
           {headerLogin}
         </header>
 
@@ -292,7 +329,7 @@ export default function App() {
   return (
     <div className="page">
       <header className="topbar">
-        <p className="logo">Making Magic Meetups</p>
+        {headerBrand}
         {headerLogin}
       </header>
 
