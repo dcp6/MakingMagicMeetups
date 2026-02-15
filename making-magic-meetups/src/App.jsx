@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 
 const apiBaseUrl =
   import.meta.env.VITE_API_BASE_URL ||
-  (import.meta.env.DEV ? '' : 'https://makingmagicmeetups.onrender.com');
+  (import.meta.env.DEV ? 'http://localhost:8787' : 'https://makingmagicmeetups.onrender.com');
 const sessionStorageKey = 'making_magic_meetups_session_v1';
 
 const events = [
@@ -57,6 +57,8 @@ export default function App() {
   const [settingsNewPassword, setSettingsNewPassword] = useState('');
   const [settingsFeedback, setSettingsFeedback] = useState('');
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
+  const [loginServiceStatus, setLoginServiceStatus] = useState('unknown');
+  const [loginServiceLastCheckedAt, setLoginServiceLastCheckedAt] = useState(null);
 
   useEffect(() => {
     function syncRouteFromHash() {
@@ -82,6 +84,34 @@ export default function App() {
     return () => {
       window.removeEventListener('hashchange', syncRouteFromHash);
     };
+  }, []);
+
+  async function checkLoginService() {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 4500);
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/health`, {
+        method: 'GET',
+        signal: controller.signal
+      });
+      const ok = response.ok;
+      setLoginServiceStatus(ok ? 'ok' : 'bad');
+    } catch (_error) {
+      setLoginServiceStatus('bad');
+    } finally {
+      window.clearTimeout(timeoutId);
+      setLoginServiceLastCheckedAt(Date.now());
+    }
+  }
+
+  useEffect(() => {
+    checkLoginService();
+    const intervalId = window.setInterval(() => {
+      checkLoginService();
+    }, 15000);
+    return () => window.clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -988,6 +1018,29 @@ export default function App() {
     </div>
   );
 
+  const loginServiceIndicator = (
+    <div className="login-service-indicator" role="status" aria-live="polite">
+      <button
+        type="button"
+        className={`login-service-button login-service-${loginServiceStatus}`}
+        onClick={checkLoginService}
+        title="Click to re-check login service"
+      >
+        Login Service:{' '}
+        {loginServiceStatus === 'ok'
+          ? 'Online'
+          : loginServiceStatus === 'bad'
+            ? 'Offline'
+            : 'Checking...'}
+      </button>
+      {loginServiceLastCheckedAt ? (
+        <p className="login-service-meta">
+          Last checked {new Date(loginServiceLastCheckedAt).toLocaleTimeString()}
+        </p>
+      ) : null}
+    </div>
+  );
+
   if (route === 'settings') {
     return (
       <div className="page">
@@ -1057,6 +1110,7 @@ export default function App() {
             {settingsFeedback ? <p>{settingsFeedback}</p> : null}
           </section>
         </main>
+        {loginServiceIndicator}
       </div>
     );
   }
@@ -1280,6 +1334,7 @@ export default function App() {
             ) : null}
           </section>
         </main>
+        {loginServiceIndicator}
       </div>
     );
   }
@@ -1353,6 +1408,7 @@ export default function App() {
             {accountFeedback ? <p>{accountFeedback}</p> : null}
           </section>
         </main>
+        {loginServiceIndicator}
       </div>
     );
   }
@@ -1412,6 +1468,7 @@ export default function App() {
         </section>
 
       </main>
+      {loginServiceIndicator}
     </div>
   );
 }
