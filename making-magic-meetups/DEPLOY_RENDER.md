@@ -22,6 +22,14 @@ using the root blueprint:
 - Health: `GET https://<your-render-url>/api/health`
 - Subscribe: `POST https://<your-render-url>/api/users` JSON `{ "email": "you@example.com" }`
 
+## Seed Production Accounts
+
+From the Render Shell for `makingmagicmeetups-api` (service root `making-magic-meetups`), run:
+
+- `npm run seed:prod-accounts`
+
+This inserts 5 fake accounts (passwords max 10 characters) with `INSERT OR IGNORE`, so reruns are safe.
+
 ## Notes
 
 - `GET /api/users` is admin-protected and requires `ADMIN_API_KEY` header.

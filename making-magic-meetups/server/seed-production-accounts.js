@@ -12,14 +12,7 @@ const dbPath = path.join(dbDir, 'users.db');
 fs.mkdirSync(dbDir, { recursive: true });
 
 const db = new Database(dbPath);
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT NOT NULL UNIQUE,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  );
-`);
-
+db.pragma('journal_mode = WAL');
 db.exec(`
   CREATE TABLE IF NOT EXISTS accounts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,25 +31,7 @@ try {
   // Column already exists; ignore migration error.
 }
 
-const mockUsers = [
-  'ava.turner@example.com',
-  'liam.brooks@example.com',
-  'mia.ross@example.com',
-  'noah.kim@example.com',
-  'zoe.patel@example.com',
-  'ethan.rivera@example.com',
-  'nora.bennett@example.com',
-  'oliver.reed@example.com',
-  'luna.garcia@example.com',
-  'jackson.hughes@example.com',
-  'ella.ward@example.com',
-  'leo.flores@example.com',
-  'chloe.perry@example.com',
-  'henry.price@example.com',
-  'grace.kelly@example.com'
-];
-
-const mockAccounts = [
+const fakeAccounts = [
   {
     username: 'neo_trade',
     fullName: 'Neo Trader',
@@ -89,29 +64,18 @@ const mockAccounts = [
   }
 ];
 
-const insertUser = db.prepare('INSERT OR IGNORE INTO users (email) VALUES (?)');
-const countUsers = db.prepare('SELECT COUNT(*) AS count FROM users');
 const insertAccount = db.prepare(`
   INSERT OR IGNORE INTO accounts (username, full_name, email, password_hash, password_plain)
   VALUES (?, ?, ?, ?, ?)
 `);
 const countAccounts = db.prepare('SELECT COUNT(*) AS count FROM accounts');
 
-const beforeCount = countUsers.get().count;
-const insertMany = db.transaction((emails) => {
-  for (const email of emails) {
-    insertUser.run(email);
-  }
-});
-
-insertMany(mockUsers);
-
-const afterCount = countUsers.get().count;
-const addedCount = afterCount - beforeCount;
-
-const beforeAccounts = countAccounts.get().count;
-const insertManyAccounts = db.transaction((accounts) => {
+const beforeCount = countAccounts.get().count;
+const insertMany = db.transaction((accounts) => {
   for (const account of accounts) {
+    if (!account.password || account.password.length > 10) {
+      throw new Error(`Invalid password length for ${account.username}`);
+    }
     const passwordHash = crypto.createHash('sha256').update(account.password).digest('hex');
     insertAccount.run(
       account.username,
@@ -123,11 +87,10 @@ const insertManyAccounts = db.transaction((accounts) => {
   }
 });
 
-insertManyAccounts(mockAccounts);
+insertMany(fakeAccounts);
 
-const afterAccounts = countAccounts.get().count;
-const addedAccounts = afterAccounts - beforeAccounts;
+const afterCount = countAccounts.get().count;
+const addedCount = afterCount - beforeCount;
 
-console.log(`Mock users seeded: ${addedCount} added, ${afterCount} total`);
-console.log(`Mock accounts seeded: ${addedAccounts} added, ${afterAccounts} total`);
+console.log(`Production account seed complete: ${addedCount} added, ${afterCount} total accounts`);
 console.log(`DB path: ${dbPath}`);
