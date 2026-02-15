@@ -367,6 +367,15 @@ export default function App() {
     return value;
   }
 
+  function recomputeCostTotal(pricedEntries) {
+    return pricedEntries.reduce((sum, entry) => {
+      if (entry.lineTotalUsd === null) {
+        return sum;
+      }
+      return sum + entry.lineTotalUsd;
+    }, 0);
+  }
+
   async function priceCards(entries) {
     const uniqueNames = entries.map((entry) => entry.cardName);
     const pricedUnique = await Promise.all(uniqueNames.map((name) => fetchCardPriceFromScryfall(name)));
@@ -381,15 +390,8 @@ export default function App() {
       };
     });
 
-    const total = pricedEntries.reduce((sum, entry) => {
-      if (entry.lineTotalUsd === null) {
-        return sum;
-      }
-      return sum + entry.lineTotalUsd;
-    }, 0);
-
     setUploadedCards(pricedEntries);
-    setCardCostTotal(total);
+    setCardCostTotal(recomputeCostTotal(pricedEntries));
   }
 
   async function loadAdminAccountsFromApi(authHeader) {
@@ -503,6 +505,73 @@ export default function App() {
       setCardUploadFeedback('Could not save card list right now.');
     } finally {
       setIsCardPriceLoading(false);
+    }
+  }
+
+  function handleQuantityChange(index, nextValue) {
+    const raw = Number(nextValue);
+    const quantity = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1;
+
+    setUploadedCards((previous) => {
+      const next = previous.map((card, i) => {
+        if (i !== index) {
+          return card;
+        }
+        const lineTotalUsd = card.unitUsd !== null ? card.unitUsd * quantity : null;
+        return { ...card, quantity, lineTotalUsd };
+      });
+      setCardCostTotal(recomputeCostTotal(next));
+
+      // Keep the textarea aligned with the current quantities.
+      const nextText = next.map((card) => `${card.quantity} ${card.resolvedName || card.inputName}`).join('\n');
+      setCardInputText(nextText);
+      return next;
+    });
+  }
+
+  async function handleSaveQuantities() {
+    if (!loggedInUser || loggedInUser.role !== 'user') {
+      setCardUploadFeedback('Log in with a user account to save a card list.');
+      return;
+    }
+
+    const authHeader = loginAuthHeader;
+    if (!authHeader) {
+      setCardUploadFeedback('Please log in again to continue.');
+      return;
+    }
+
+    const entries = uploadedCards
+      .map((card) => ({
+        cardName: String(card.resolvedName || card.inputName || '').trim(),
+        quantity: Number(card.quantity) || 1
+      }))
+      .filter((entry) => entry.cardName);
+
+    if (entries.length === 0) {
+      setCardUploadFeedback('No cards to save.');
+      return;
+    }
+
+    try {
+      const saveResponse = await fetch(`${apiBaseUrl}/api/cards`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: authHeader
+        },
+        body: JSON.stringify({ cards: entries })
+      });
+
+      const payload = await saveResponse.json();
+      if (!saveResponse.ok) {
+        setCardUploadFeedback(payload.error || 'Could not save your card list.');
+        return;
+      }
+
+      setCardUploadFeedback(`Saved quantities for ${entries.length} unique card${entries.length === 1 ? '' : 's'}.`);
+    } catch (_error) {
+      setCardUploadFeedback('Could not save card list right now.');
     }
   }
 
@@ -623,6 +692,11 @@ export default function App() {
                 {uploadedCards.length > 0 ? (
                   <div className="card-upload-results">
                     <h2>Uploaded Cards</h2>
+                    <div className="dashboard-actions">
+                      <button type="button" onClick={handleSaveQuantities}>
+                        Save Quantities
+                      </button>
+                    </div>
                     <table className="price-table">
                       <thead>
                         <tr>
@@ -637,7 +711,16 @@ export default function App() {
                         {uploadedCards.map((card, index) => (
                           <tr key={`${card.inputName}-${index}`}>
                             <td>{card.resolvedName}</td>
-                            <td>{card.quantity}</td>
+                            <td>
+                              <input
+                                className="qty-input"
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={card.quantity}
+                                onChange={(event) => handleQuantityChange(index, event.target.value)}
+                              />
+                            </td>
                             <td>{card.tcgLow}</td>
                             <td>
                               {card.lineTotalUsd !== null
