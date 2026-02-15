@@ -906,7 +906,6 @@ export default function App() {
           Authorization: loginAuthHeader
         },
         body: JSON.stringify({
-          username: settingsUsername,
           fullName: settingsFullName,
           email: settingsEmail,
           password: settingsNewPassword ? settingsNewPassword : undefined
@@ -920,25 +919,6 @@ export default function App() {
 
       setSettingsFeedback('Settings saved.');
       setSettingsNewPassword('');
-      setLoggedInUser((prev) =>
-        prev ? { ...prev, username: payload.account?.username || prev.username } : prev
-      );
-
-      const rawSession = window.localStorage.getItem(sessionStorageKey);
-      if (rawSession) {
-        try {
-          const session = JSON.parse(rawSession);
-          window.localStorage.setItem(
-            sessionStorageKey,
-            JSON.stringify({
-              ...session,
-              user: { ...(session.user || {}), username: payload.account?.username || session.user?.username }
-            })
-          );
-        } catch (_error) {
-          // ignore
-        }
-      }
     } catch (_error) {
       setSettingsFeedback('Could not save settings.');
     } finally {
@@ -1032,11 +1012,9 @@ export default function App() {
                   type="text"
                   placeholder="username"
                   value={settingsUsername}
-                  onChange={(event) => setSettingsUsername(event.target.value.toLowerCase())}
-                  required
-                  minLength={3}
-                  maxLength={24}
-                  pattern="[a-z0-9_]+"
+                  readOnly
+                  aria-readonly="true"
+                  title="Username cannot be changed."
                 />
                 <label htmlFor="settings-fullname" className="sr-only">
                   Full Name

@@ -100,8 +100,7 @@ const findAccountById = db.prepare(`
 
 const updateAccountProfile = db.prepare(`
   UPDATE accounts
-  SET username = ?,
-      full_name = ?,
+  SET full_name = ?,
       email = ?
   WHERE id = ?
 `);
@@ -343,7 +342,7 @@ const corsOptions = {
     }
     return callback(new Error('Not allowed by CORS'));
   },
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Api-Key'],
   optionsSuccessStatus: 204
 };
@@ -488,15 +487,16 @@ app.patch('/api/me', (req, res) => {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
 
-  const username = String(req.body?.username ?? '').trim().toLowerCase();
   const fullName = String(req.body?.fullName ?? '').trim();
   const email = String(req.body?.email ?? '').trim().toLowerCase();
   const nextPassword = req.body?.password === undefined ? null : String(req.body?.password || '');
 
-  if (!username || !/^[a-z0-9_]{3,24}$/.test(username)) {
-    return res.status(400).json({
-      error: 'Username must be 3-24 chars and use lowercase letters, numbers, or underscores.'
-    });
+  const requestedUsername =
+    req.body && Object.prototype.hasOwnProperty.call(req.body, 'username')
+      ? String(req.body.username ?? '').trim().toLowerCase()
+      : null;
+  if (requestedUsername && requestedUsername !== String(user.username || '').trim().toLowerCase()) {
+    return res.status(400).json({ error: 'Username cannot be changed.' });
   }
   if (!fullName || fullName.length < 2) {
     return res.status(400).json({ error: 'Please provide your full name.' });
@@ -509,7 +509,7 @@ app.patch('/api/me', (req, res) => {
   }
 
   const saveTx = db.transaction((accountId) => {
-    updateAccountProfile.run(username, fullName, email, accountId);
+    updateAccountProfile.run(fullName, email, accountId);
     if (nextPassword !== null && nextPassword.length > 0) {
       const passwordHash = crypto.createHash('sha256').update(nextPassword).digest('hex');
       updateAccountPassword.run(passwordHash, nextPassword, accountId);
@@ -520,7 +520,7 @@ app.patch('/api/me', (req, res) => {
     saveTx(user.id);
   } catch (error) {
     if (String(error?.message || '').includes('UNIQUE constraint failed')) {
-      return res.status(409).json({ error: 'Email or username already in use.' });
+      return res.status(409).json({ error: 'Email already in use.' });
     }
     return res.status(500).json({ error: 'Failed to update account.' });
   }
