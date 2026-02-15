@@ -452,7 +452,8 @@ export default function App() {
       const collectorNumber = priced.collectorNumber ?? entries[index]?.collectorNumber ?? null;
       const imageSmall = priced.imageSmall ?? entries[index]?.imageSmall ?? null;
       const imageNormal = priced.imageNormal ?? entries[index]?.imageNormal ?? null;
-      const askingUnitUsd =
+      // Asking For is treated as a fixed total per row (not scaled by quantity).
+      const askingTotalUsd =
         askingPriceCents === null || askingPriceCents === undefined
           ? null
           : Number(askingPriceCents) / 100;
@@ -462,8 +463,7 @@ export default function App() {
         unitUsd,
         lineTotalUsd: unitUsd !== null ? unitUsd * quantity : null,
         askingPriceCents,
-        askingUnitUsd,
-        askingLineTotalUsd: askingUnitUsd !== null ? askingUnitUsd * quantity : null,
+        askingLineTotalUsd: askingTotalUsd,
         scryfallId,
         setCode,
         setName,
@@ -612,9 +612,8 @@ export default function App() {
           return card;
         }
         const lineTotalUsd = card.unitUsd !== null ? card.unitUsd * quantity : null;
-        const askingLineTotalUsd =
-          card.askingUnitUsd !== null ? card.askingUnitUsd * quantity : null;
-        return { ...card, quantity, lineTotalUsd, askingLineTotalUsd };
+        // Asking total does not scale with quantity.
+        return { ...card, quantity, lineTotalUsd };
       });
       setCardCostTotal(recomputeCostTotal(next));
       setCardAskingTotal(recomputeAskingTotal(next));
@@ -634,11 +633,9 @@ export default function App() {
         if (i !== index) {
           return card;
         }
-        const askingUnitUsd =
-          askingPriceCents === null ? null : Number(askingPriceCents) / 100;
         const askingLineTotalUsd =
-          askingUnitUsd !== null ? askingUnitUsd * card.quantity : null;
-        return { ...card, askingPriceCents, askingUnitUsd, askingLineTotalUsd };
+          askingPriceCents === null ? null : Number(askingPriceCents) / 100;
+        return { ...card, askingPriceCents, askingLineTotalUsd };
       });
       setCardAskingTotal(recomputeAskingTotal(next));
       return next;
@@ -997,9 +994,8 @@ export default function App() {
                             <td>
                               <input
                                 className="ask-input"
-                                type="number"
-                                min={0}
-                                step={0.01}
+                                type="text"
+                                inputMode="decimal"
                                 placeholder="0.00"
                                 value={formatCents(card.askingPriceCents)}
                                 onChange={(event) => handleAskingPriceChange(index, event.target.value)}
