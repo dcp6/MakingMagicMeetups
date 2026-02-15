@@ -1,10 +1,10 @@
 import { defineConfig } from 'vite';
 
-const repoName = process.env.GITHUB_REPOSITORY?.split('/')[1];
-const pagesBase = process.env.GITHUB_ACTIONS && repoName ? `/${repoName}/` : '/';
-
 export default defineConfig({
-  base: pagesBase,
+  // Use relative asset paths so the same build works on:
+  // - https://<user>.github.io/<repo>/ (subpath)
+  // - https://custom-domain/ (root)
+  base: './',
   server: {
     port: 5174,
     proxy: {
