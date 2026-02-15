@@ -12,7 +12,10 @@ const dbDir =
   process.env.DATA_DIR || (process.env.RENDER ? '/var/data' : path.join(__dirname, '..', 'data'));
 const dbPath = path.join(dbDir, 'users.db');
 const port = process.env.PORT ? Number(process.env.PORT) : 8787;
-const frontendOrigin = process.env.FRONTEND_ORIGIN || 'https://dcp6.github.io';
+const frontendOrigins = String(process.env.FRONTEND_ORIGIN || 'https://dcp6.github.io')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
 const adminApiKey = process.env.ADMIN_API_KEY || '';
 const adminUsername = process.env.ADMIN_USERNAME || 'admin';
 const adminPassword = process.env.ADMIN_PASSWORD || 'test123';
@@ -312,7 +315,7 @@ function parseBasicAuth(req) {
 const app = express();
 const corsOptions = {
   origin(origin, callback) {
-    const allowedOrigins = [frontendOrigin, 'http://localhost:5174'];
+    const allowedOrigins = [...frontendOrigins, 'http://localhost:5174'];
     if (!origin || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }

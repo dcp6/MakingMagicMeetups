@@ -20,6 +20,6 @@ services:
       - key: NODE_VERSION
         value: 20
       - key: FRONTEND_ORIGIN
-        value: https://dcp6.github.io
+        value: https://dcp6.github.io,https://www.makingmagicmeetups.com
       - key: DATA_DIR
         value: /var/data
