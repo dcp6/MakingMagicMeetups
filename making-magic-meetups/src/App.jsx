@@ -463,6 +463,7 @@ export default function App() {
         unitUsd,
         lineTotalUsd: unitUsd !== null ? unitUsd * quantity : null,
         askingPriceCents,
+        askingInput: formatCents(askingPriceCents),
         askingLineTotalUsd: askingTotalUsd,
         scryfallId,
         setCode,
@@ -635,9 +636,29 @@ export default function App() {
         }
         const askingLineTotalUsd =
           askingPriceCents === null ? null : Number(askingPriceCents) / 100;
-        return { ...card, askingPriceCents, askingLineTotalUsd };
+        return {
+          ...card,
+          askingInput: nextValue,
+          askingPriceCents,
+          askingLineTotalUsd
+        };
       });
       setCardAskingTotal(recomputeAskingTotal(next));
+      return next;
+    });
+  }
+
+  function handleAskingPriceBlur(index) {
+    setUploadedCards((previous) => {
+      const next = previous.map((card, i) => {
+        if (i !== index) {
+          return card;
+        }
+        return {
+          ...card,
+          askingInput: formatCents(card.askingPriceCents)
+        };
+      });
       return next;
     });
   }
@@ -997,8 +1018,9 @@ export default function App() {
                                 type="text"
                                 inputMode="decimal"
                                 placeholder="0.00"
-                                value={formatCents(card.askingPriceCents)}
+                                value={card.askingInput ?? formatCents(card.askingPriceCents)}
                                 onChange={(event) => handleAskingPriceChange(index, event.target.value)}
+                                onBlur={() => handleAskingPriceBlur(index)}
                               />
                             </td>
                             <td>
