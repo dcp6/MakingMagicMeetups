@@ -953,12 +953,22 @@ export default function App() {
                           <tr key={`${card.inputName}-${index}`}>
                             <td>
                               {card.imageSmall ? (
-                                <img
-                                  className="card-thumb"
-                                  src={card.imageSmall}
-                                  alt={card.resolvedName}
-                                  loading="lazy"
-                                />
+                                <div className="thumb-wrap">
+                                  <img
+                                    className="card-thumb"
+                                    src={card.imageSmall}
+                                    alt={card.resolvedName}
+                                    loading="lazy"
+                                  />
+                                  {card.imageNormal ? (
+                                    <img
+                                      className="card-thumb-preview"
+                                      src={card.imageNormal}
+                                      alt=""
+                                      loading="lazy"
+                                    />
+                                  ) : null}
+                                </div>
                               ) : null}
                             </td>
                             <td>{card.resolvedName}</td>

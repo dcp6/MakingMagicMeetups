@@ -358,6 +358,33 @@ h1 {
   display: block;
 }
 
+.thumb-wrap {
+  position: relative;
+  width: 2.25rem;
+}
+
+.card-thumb-preview {
+  position: absolute;
+  left: 2.6rem;
+  top: -0.25rem;
+  width: 11rem;
+  height: auto;
+  border-radius: 0.6rem;
+  border: 1px solid var(--stroke);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
+  background: #fff;
+  opacity: 0;
+  transform: translateY(6px) scale(0.98);
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+  z-index: 50;
+}
+
+.thumb-wrap:hover .card-thumb-preview {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
 .version-button {
   padding: 0.3rem 0.45rem;
   border: 1px solid var(--stroke);
