@@ -230,9 +230,8 @@ function parseAskingPriceCents(value) {
   if (!Number.isFinite(dollarsValue) || dollarsValue < 0) {
     return null;
   }
-  // Asking For is stored as whole dollars only.
-  const wholeDollars = Math.floor(dollarsValue);
-  return wholeDollars * 100;
+  // Asking For is stored as cents (dollars + cents).
+  return Math.round(dollarsValue * 100);
 }
 
 function authenticateLogin(identifier, password) {

@@ -399,15 +399,15 @@ export default function App() {
     return value;
   }
 
-  function formatWholeDollarsFromCents(cents) {
+  function formatCents(cents) {
     if (cents === null || cents === undefined) {
       return '';
     }
-    const dollars = Math.floor(Number(cents) / 100);
-    return Number.isFinite(dollars) ? String(dollars) : '';
+    const dollars = Number(cents) / 100;
+    return Number.isFinite(dollars) ? dollars.toFixed(2) : '';
   }
 
-  function parseWholeDollarsToCents(value) {
+  function parseDollarsToCents(value) {
     if (value === '' || value === null || value === undefined) {
       return null;
     }
@@ -415,12 +415,11 @@ export default function App() {
     if (!normalized) {
       return null;
     }
-    const asNumber = Number(normalized);
-    if (!Number.isFinite(asNumber) || asNumber < 0) {
+    const dollars = Number(normalized);
+    if (!Number.isFinite(dollars) || dollars < 0) {
       return null;
     }
-    const dollars = Math.floor(asNumber);
-    return dollars * 100;
+    return Math.round(dollars * 100);
   }
 
   function recomputeCostTotal(pricedEntries) {
@@ -453,7 +452,7 @@ export default function App() {
       const collectorNumber = priced.collectorNumber ?? entries[index]?.collectorNumber ?? null;
       const imageSmall = priced.imageSmall ?? entries[index]?.imageSmall ?? null;
       const imageNormal = priced.imageNormal ?? entries[index]?.imageNormal ?? null;
-      // Asking For is an integer $/card value and scales by quantity.
+      // Asking For is a per-card unit price ($/card) and scales by quantity.
       const askingUnitUsd =
         askingPriceCents === null || askingPriceCents === undefined
           ? null
@@ -464,7 +463,7 @@ export default function App() {
         unitUsd,
         lineTotalUsd: unitUsd !== null ? unitUsd * quantity : null,
         askingPriceCents,
-        askingInput: formatWholeDollarsFromCents(askingPriceCents),
+        askingInput: formatCents(askingPriceCents),
         askingLineTotalUsd: askingUnitUsd !== null ? askingUnitUsd * quantity : null,
         scryfallId,
         setCode,
@@ -633,7 +632,7 @@ export default function App() {
   }
 
   function handleAskingPriceChange(index, nextValue) {
-    const askingPriceCents = parseWholeDollarsToCents(nextValue);
+    const askingPriceCents = parseDollarsToCents(nextValue);
 
     setUploadedCards((previous) => {
       const next = previous.map((card, i) => {
@@ -664,7 +663,7 @@ export default function App() {
         }
         return {
           ...card,
-          askingInput: formatWholeDollarsFromCents(card.askingPriceCents)
+          askingInput: formatCents(card.askingPriceCents)
         };
       });
       return next;
@@ -1024,9 +1023,9 @@ export default function App() {
                               <input
                                 className="ask-input"
                                 type="text"
-                                inputMode="numeric"
-                                placeholder="0"
-                                value={card.askingInput ?? formatWholeDollarsFromCents(card.askingPriceCents)}
+                                inputMode="decimal"
+                                placeholder="0.00"
+                                value={card.askingInput ?? formatCents(card.askingPriceCents)}
                                 onChange={(event) => handleAskingPriceChange(index, event.target.value)}
                                 onBlur={() => handleAskingPriceBlur(index)}
                               />
