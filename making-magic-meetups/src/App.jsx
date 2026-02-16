@@ -404,7 +404,9 @@ export default function App() {
   }
 
   useEffect(() => {
-    const rawSession = window.localStorage.getItem(sessionStorageKey);
+    const rawSession =
+      window.sessionStorage.getItem(sessionStorageKey) ||
+      window.localStorage.getItem(sessionStorageKey);
     if (!rawSession) {
       return;
     }
@@ -412,6 +414,7 @@ export default function App() {
     try {
       const session = JSON.parse(rawSession);
       if (!session || !session.user || !session.authHeader) {
+        window.sessionStorage.removeItem(sessionStorageKey);
         window.localStorage.removeItem(sessionStorageKey);
         return;
       }
@@ -419,7 +422,6 @@ export default function App() {
       setLoggedInUser(session.user);
       setLoginAuthHeader(session.authHeader);
       setLoginIdentifier(session.identifier || '');
-      setLoginPassword(session.password || '');
       setLoginFeedback(`Welcome back, ${session.user.username || 'user'}.`);
 
       if (session.user.role === 'admin') {
@@ -428,11 +430,13 @@ export default function App() {
         loadUserCardsFromApi(session.authHeader);
       }
     } catch (_error) {
+      window.sessionStorage.removeItem(sessionStorageKey);
       window.localStorage.removeItem(sessionStorageKey);
     }
   }, []);
 
   function clearStoredSession() {
+    window.sessionStorage.removeItem(sessionStorageKey);
     window.localStorage.removeItem(sessionStorageKey);
   }
 
@@ -514,13 +518,12 @@ export default function App() {
       setLoggedInUser(loginPayload.user || null);
       setLoginAuthHeader(authHeader);
       setLoginFeedback(`Welcome, ${loginPayload.user?.username || 'user'}.`);
-      window.localStorage.setItem(
+      window.sessionStorage.setItem(
         sessionStorageKey,
         JSON.stringify({
           user: loginPayload.user || null,
           authHeader,
-          identifier: trimmedIdentifier,
-          password: submittedPassword
+          identifier: trimmedIdentifier
         })
       );
 
@@ -548,13 +551,12 @@ export default function App() {
             setLoggedInUser(retryPayload.user || null);
             setLoginAuthHeader(authHeader);
             setLoginFeedback(`Welcome, ${retryPayload.user?.username || 'user'}.`);
-            window.localStorage.setItem(
+            window.sessionStorage.setItem(
               sessionStorageKey,
               JSON.stringify({
                 user: retryPayload.user || null,
                 authHeader,
-                identifier: trimmedIdentifier,
-                password: submittedPassword
+                identifier: trimmedIdentifier
               })
             );
             if (retryPayload.user?.role === 'admin') {

@@ -36,6 +36,12 @@ const mapkitOrigin = String(
 const mapkitTtlSeconds = process.env.MAPKIT_TOKEN_TTL_SECONDS
   ? Number(process.env.MAPKIT_TOKEN_TTL_SECONDS)
   : 60 * 60;
+const loginRateLimitWindowMs = process.env.LOGIN_RATE_LIMIT_WINDOW_MS
+  ? Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS)
+  : 15 * 60 * 1000;
+const loginRateLimitMaxAttempts = process.env.LOGIN_RATE_LIMIT_MAX_ATTEMPTS
+  ? Number(process.env.LOGIN_RATE_LIMIT_MAX_ATTEMPTS)
+  : 12;
 
 fs.mkdirSync(dbDir, { recursive: true });
 
@@ -541,6 +547,38 @@ function parseAskingPriceCentsFromSubmittedCard(submitted) {
   return parseAskingPriceCents(submitted?.askingPrice ?? submitted?.asking_price);
 }
 
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `scrypt$${salt}$${hash}`;
+}
+
+function verifyPassword(password, storedHash) {
+  const normalizedHash = String(storedHash || '').trim();
+  if (!normalizedHash) {
+    return false;
+  }
+
+  if (normalizedHash.startsWith('scrypt$')) {
+    const parts = normalizedHash.split('$');
+    if (parts.length !== 3) {
+      return false;
+    }
+    const salt = parts[1];
+    const expectedHex = parts[2];
+    const expected = Buffer.from(expectedHex, 'hex');
+    const actual = crypto.scryptSync(password, salt, expected.length);
+    if (actual.length !== expected.length) {
+      return false;
+    }
+    return crypto.timingSafeEqual(actual, expected);
+  }
+
+  // Backward compatibility with legacy SHA-256 hashes.
+  const legacyHash = crypto.createHash('sha256').update(password).digest('hex');
+  return legacyHash === normalizedHash;
+}
+
 function authenticateLogin(identifier, password) {
   if (identifier === adminUsername.toLowerCase() && password === adminPassword) {
     return {
@@ -553,10 +591,17 @@ function authenticateLogin(identifier, password) {
   }
 
   const account = findAccountForLogin.get(identifier, identifier);
-  const providedHash = crypto.createHash('sha256').update(password).digest('hex');
-
-  if (!account || account.password_hash !== providedHash) {
+  if (!account || !verifyPassword(password, account.password_hash)) {
     return null;
+  }
+
+  // Opportunistic migration: legacy SHA-256 hashes are upgraded to scrypt after successful login.
+  if (!String(account.password_hash || '').startsWith('scrypt$')) {
+    try {
+      updateAccountPassword.run(hashPassword(password), null, account.id);
+    } catch (_error) {
+      // ignore migration failure and allow login
+    }
   }
 
   return {
@@ -616,6 +661,46 @@ function ensureLoggedInUser(req, res) {
   return user;
 }
 
+const loginAttemptStore = new Map();
+
+function getRequestIp(req) {
+  const forwardedFor = String(req.header('x-forwarded-for') || '').split(',')[0].trim();
+  return forwardedFor || req.ip || 'unknown';
+}
+
+function getLoginThrottleKey(req) {
+  const identifierRaw = String(req.body?.identifier || req.body?.username || '').trim().toLowerCase();
+  return `${getRequestIp(req)}|${identifierRaw}`;
+}
+
+function isLoginRateLimited(key) {
+  const entry = loginAttemptStore.get(key);
+  if (!entry) {
+    return false;
+  }
+  const now = Date.now();
+  if (now - entry.windowStartMs > loginRateLimitWindowMs) {
+    loginAttemptStore.delete(key);
+    return false;
+  }
+  return entry.count >= loginRateLimitMaxAttempts;
+}
+
+function recordLoginAttempt(key, success) {
+  if (success) {
+    loginAttemptStore.delete(key);
+    return;
+  }
+  const now = Date.now();
+  const current = loginAttemptStore.get(key);
+  if (!current || now - current.windowStartMs > loginRateLimitWindowMs) {
+    loginAttemptStore.set(key, { count: 1, windowStartMs: now });
+    return;
+  }
+  current.count += 1;
+  loginAttemptStore.set(key, current);
+}
+
 function loadMapKitPrivateKey() {
   if (mapkitPrivateKeyPath) {
     try {
@@ -641,6 +726,19 @@ function loadMapKitPrivateKey() {
 }
 
 const app = express();
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (String(req.header('x-forwarded-proto') || '').toLowerCase() === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
+  next();
+});
+
 const corsOptions = {
   origin(origin, callback) {
     // Keep this permissive enough for our known frontends so deployments don't break on env var drift.
@@ -777,13 +875,20 @@ app.patch('/api/me/preferred-store', async (req, res) => {
 });
 
 app.post('/api/admin/login', (req, res) => {
+  const throttleKey = getLoginThrottleKey(req);
+  if (isLoginRateLimited(throttleKey)) {
+    return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
+  }
+
   const username = String(req.body?.username || '');
   const password = String(req.body?.password || '');
 
   if (username === adminUsername && password === adminPassword) {
+    recordLoginAttempt(throttleKey, true);
     return res.json({ ok: true });
   }
 
+  recordLoginAttempt(throttleKey, false);
   return res.status(401).json({ error: 'Invalid admin credentials.' });
 });
 
@@ -831,8 +936,8 @@ app.post('/api/accounts', (req, res) => {
   }
 
   try {
-    const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
-    const result = insertAccount.run(username, fullName, email, passwordHash, password);
+    const passwordHash = hashPassword(password);
+    const result = insertAccount.run(username, fullName, email, passwordHash, null);
     return res.status(201).json({ id: result.lastInsertRowid, username, email, fullName });
   } catch (error) {
     if (String(error?.message || '').includes('UNIQUE constraint failed')) {
@@ -846,17 +951,25 @@ app.post('/api/accounts', (req, res) => {
 });
 
 app.post('/api/login', (req, res) => {
+  const throttleKey = getLoginThrottleKey(req);
+  if (isLoginRateLimited(throttleKey)) {
+    return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
+  }
+
   const identifier = String(req.body?.identifier || '').trim().toLowerCase();
   const password = String(req.body?.password || '');
 
   if (!identifier || !password) {
+    recordLoginAttempt(throttleKey, false);
     return res.status(400).json({ error: 'Please provide username/email and password.' });
   }
 
   const user = authenticateLogin(identifier, password);
   if (!user) {
+    recordLoginAttempt(throttleKey, false);
     return res.status(401).json({ error: 'Invalid login credentials.' });
   }
+  recordLoginAttempt(throttleKey, true);
 
   return res.json({
     ok: true,
@@ -938,8 +1051,7 @@ app.patch('/api/me', (req, res) => {
     if (!row?.password_hash) {
       return res.status(500).json({ error: 'Failed to verify current password.' });
     }
-    const providedHash = crypto.createHash('sha256').update(currentPassword).digest('hex');
-    if (providedHash !== row.password_hash) {
+    if (!verifyPassword(currentPassword, row.password_hash)) {
       return res.status(401).json({ error: 'Current password is incorrect.' });
     }
   }
@@ -947,8 +1059,8 @@ app.patch('/api/me', (req, res) => {
   const saveTx = db.transaction((accountId) => {
     updateAccountProfile.run(fullName, email, accountId);
     if (nextPassword !== null && nextPassword.length > 0) {
-      const passwordHash = crypto.createHash('sha256').update(nextPassword).digest('hex');
-      updateAccountPassword.run(passwordHash, nextPassword, accountId);
+      const passwordHash = hashPassword(nextPassword);
+      updateAccountPassword.run(passwordHash, null, accountId);
     }
   });
 
