@@ -872,11 +872,21 @@ export default function App() {
           card.askingPriceCents === null || card.askingPriceCents === undefined
             ? null
             : Number(card.askingPriceCents);
+        const quantity = Number(card.quantity) || 1;
+        const parsedAskingQuantity =
+          card.askingQuantity === null || card.askingQuantity === undefined
+            ? null
+            : Number(card.askingQuantity);
+        const askingQuantity =
+          parsedAskingQuantity === null || !Number.isFinite(parsedAskingQuantity)
+            ? null
+            : Math.max(1, Math.min(quantity, Math.floor(parsedAskingQuantity)));
 
         return {
           cardName,
-          quantity: Number(card.quantity) || 1,
+          quantity,
           requesting: Boolean(card.requesting),
+          askingQuantity,
           askingPriceCents,
           scryfallId: card.scryfallId || null,
           setCode: card.setCode || null,
@@ -895,6 +905,11 @@ export default function App() {
     const pricedUnique = await Promise.all(entries.map((entry) => fetchCardFromScryfall(entry)));
     const pricedEntries = pricedUnique.map((priced, index) => {
       const quantity = entries[index]?.quantity ?? 1;
+      const incomingAskingQuantity = Number(entries[index]?.askingQuantity);
+      const askingQuantity =
+        Number.isFinite(incomingAskingQuantity) && incomingAskingQuantity > 0
+          ? Math.max(1, Math.min(quantity, Math.floor(incomingAskingQuantity)))
+          : quantity;
       const unitUsd = parseUsdPrice(priced.tcgLow);
       const scryfallId = priced.scryfallId ?? entries[index]?.scryfallId ?? null;
       const askingPriceCents = entries[index]?.askingPriceCents ?? null;
@@ -911,6 +926,7 @@ export default function App() {
         ...priced,
         quantity,
         requesting,
+        askingQuantity,
         askingPriceCents,
         askingInput: formatCents(askingPriceCents),
         unitUsd,
@@ -975,6 +991,10 @@ export default function App() {
             cardName: String(entry.cardName || entry.card_name || '').trim(),
             quantity: Number(entry.quantity) || 1,
             requesting: Boolean(entry.requesting),
+            askingQuantity:
+              entry.askingQuantity === null || entry.askingQuantity === undefined
+                ? null
+                : Number(entry.askingQuantity),
             askingPriceCents:
               entry.askingPriceCents === null || entry.askingPriceCents === undefined
                 ? null
@@ -1036,7 +1056,12 @@ export default function App() {
           return card;
         }
         const lineTotalUsd = card.unitUsd !== null ? card.unitUsd * quantity : null;
-        return { ...card, quantity, lineTotalUsd };
+        const currentAskingQuantity = Number(card.askingQuantity);
+        const askingQuantity =
+          Number.isFinite(currentAskingQuantity) && currentAskingQuantity > 0
+            ? Math.max(1, Math.min(quantity, Math.floor(currentAskingQuantity)))
+            : quantity;
+        return { ...card, quantity, askingQuantity, lineTotalUsd };
       });
       setCardCostTotal(recomputeCostTotal(next));
 
@@ -1077,6 +1102,24 @@ export default function App() {
         return {
           ...card,
           askingInput: formatCents(card.askingPriceCents)
+        };
+      })
+    );
+  }
+
+  function handleRequestingAskingQuantityChange(index, nextValue) {
+    const raw = Number(nextValue);
+    setUploadedCards((previous) =>
+      previous.map((card, i) => {
+        if (i !== index) {
+          return card;
+        }
+        const maxQuantity = Math.max(1, Number(card.quantity) || 1);
+        const askingQuantity =
+          Number.isFinite(raw) && raw > 0 ? Math.max(1, Math.min(maxQuantity, Math.floor(raw))) : 1;
+        return {
+          ...card,
+          askingQuantity
         };
       })
     );
@@ -1848,6 +1891,21 @@ export default function App() {
 
     const savedTotal = totalsForPairs(savedPairs);
     const requestingTotal = totalsForPairs(requestingPairs);
+    const requestingTotalValue = requestingPairs.reduce((sum, { card }) => {
+      const askingQuantityRaw =
+        card.askingQuantity === null || card.askingQuantity === undefined
+          ? Number(card.quantity) || 0
+          : Number(card.askingQuantity);
+      const askingQuantity = Number.isFinite(askingQuantityRaw) && askingQuantityRaw > 0 ? askingQuantityRaw : 0;
+      const askingPriceCents =
+        card.askingPriceCents === null || card.askingPriceCents === undefined
+          ? null
+          : Number(card.askingPriceCents);
+      if (askingPriceCents === null || !Number.isFinite(askingPriceCents) || askingPriceCents < 0) {
+        return sum;
+      }
+      return sum + (askingQuantity * askingPriceCents) / 100;
+    }, 0);
     const savedQtyTotal = savedPairs.reduce((sum, { card }) => sum + (Number(card.quantity) || 0), 0);
     const requestingQtyTotal = requestingPairs.reduce(
       (sum, { card }) => sum + (Number(card.quantity) || 0),
@@ -2072,7 +2130,8 @@ export default function App() {
 
                     <h2>Requesting</h2>
                     <p className="table-total">
-                      Table Total: ${requestingTotal.toFixed(2)} · Requesting Total: {requestingQtyTotal}{' '}
+                      Table Total: ${requestingTotal.toFixed(2)} · Requesting Total Value: $
+                      {requestingTotalValue.toFixed(2)} · Requesting Total: {requestingQtyTotal}{' '}
                       {requestingQtyTotal === 1 ? 'card' : 'cards'}
                     </p>
                     {requestingPairs.length === 0 ? (
@@ -2085,6 +2144,7 @@ export default function App() {
                               <th className="mobile-hide-requesting">Card</th>
                               <th className="mobile-hide-requesting">Version</th>
                               <th>Qty</th>
+                              <th>Ask Qty</th>
                               <th className="mobile-hide-requesting">TCGPlayer Low</th>
                               <th className="mobile-hide-requesting">Line Total</th>
                               <th>Asking For</th>
@@ -2176,6 +2236,23 @@ export default function App() {
                                   value={card.quantity}
                                   onChange={(event) =>
                                     handleQuantityChange(index, event.target.value)
+                                  }
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  className="qty-input"
+                                  type="number"
+                                  min={1}
+                                  max={Math.max(1, Number(card.quantity) || 1)}
+                                  step={1}
+                                  value={
+                                    card.askingQuantity === null || card.askingQuantity === undefined
+                                      ? Math.max(1, Number(card.quantity) || 1)
+                                      : card.askingQuantity
+                                  }
+                                  onChange={(event) =>
+                                    handleRequestingAskingQuantityChange(index, event.target.value)
                                   }
                                 />
                               </td>
