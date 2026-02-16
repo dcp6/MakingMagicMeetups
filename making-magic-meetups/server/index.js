@@ -216,6 +216,50 @@ db.exec(`
   );
 `);
 
+// "My Cards" is the permanent per-account card list table used by the app moving forward.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS my_cards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id INTEGER NOT NULL,
+    card_name TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+    asking_quantity INTEGER,
+    asking_price_cents INTEGER,
+    scryfall_id TEXT,
+    set_code TEXT,
+    set_name TEXT,
+    collector_number TEXT,
+    image_small TEXT,
+    image_normal TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+    UNIQUE (account_id, card_name)
+  );
+`);
+
+for (const column of [
+  'asking_quantity INTEGER',
+  'asking_price_cents INTEGER',
+  'scryfall_id TEXT',
+  'set_code TEXT',
+  'set_name TEXT',
+  'collector_number TEXT',
+  'image_small TEXT',
+  'image_normal TEXT'
+]) {
+  try {
+    db.exec(`ALTER TABLE my_cards ADD COLUMN ${column}`);
+  } catch (_error) {
+    // Column already exists; ignore migration error.
+  }
+}
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS my_cards_account_id_idx
+  ON my_cards (account_id)
+`);
+
 try {
   db.exec(`ALTER TABLE account_card_items ADD COLUMN asking_price_cents INTEGER`);
 } catch (_error) {
@@ -249,6 +293,47 @@ db.exec(`
   FROM account_cards
   GROUP BY account_id, card_name
   ON CONFLICT(account_id, card_name) DO NOTHING
+`);
+
+// One-time migration: move existing saved lists into "my_cards" if present.
+db.exec(`
+  INSERT INTO my_cards (
+    account_id,
+    card_name,
+    quantity,
+    asking_quantity,
+    asking_price_cents,
+    scryfall_id,
+    set_code,
+    set_name,
+    collector_number,
+    image_small,
+    image_normal
+  )
+  SELECT
+    account_id,
+    card_name,
+    quantity,
+    asking_quantity,
+    asking_price_cents,
+    scryfall_id,
+    set_code,
+    set_name,
+    collector_number,
+    image_small,
+    image_normal
+  FROM account_card_items
+  ON CONFLICT(account_id, card_name) DO UPDATE SET
+    quantity = excluded.quantity,
+    asking_quantity = excluded.asking_quantity,
+    asking_price_cents = excluded.asking_price_cents,
+    scryfall_id = excluded.scryfall_id,
+    set_code = excluded.set_code,
+    set_name = excluded.set_name,
+    collector_number = excluded.collector_number,
+    image_small = excluded.image_small,
+    image_normal = excluded.image_normal,
+    updated_at = CURRENT_TIMESTAMP
 `);
 
 const clearAccountCards = db.prepare(`
@@ -297,6 +382,56 @@ const listAccountCards = db.prepare(`
     image_small,
     image_normal
   FROM account_card_items
+  WHERE account_id = ?
+  ORDER BY card_name COLLATE NOCASE ASC
+`);
+
+const clearMyCards = db.prepare(`
+  DELETE FROM my_cards
+  WHERE account_id = ?
+`);
+
+const upsertMyCard = db.prepare(`
+  INSERT INTO my_cards (
+    account_id,
+    card_name,
+    quantity,
+    asking_quantity,
+    asking_price_cents,
+    scryfall_id,
+    set_code,
+    set_name,
+    collector_number,
+    image_small,
+    image_normal
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(account_id, card_name) DO UPDATE SET
+    quantity = excluded.quantity,
+    asking_quantity = excluded.asking_quantity,
+    asking_price_cents = excluded.asking_price_cents,
+    scryfall_id = excluded.scryfall_id,
+    set_code = excluded.set_code,
+    set_name = excluded.set_name,
+    collector_number = excluded.collector_number,
+    image_small = excluded.image_small,
+    image_normal = excluded.image_normal,
+    updated_at = CURRENT_TIMESTAMP
+`);
+
+const listMyCards = db.prepare(`
+  SELECT
+    card_name,
+    quantity,
+    asking_quantity,
+    asking_price_cents,
+    scryfall_id,
+    set_code,
+    set_name,
+    collector_number,
+    image_small,
+    image_normal
+  FROM my_cards
   WHERE account_id = ?
   ORDER BY card_name COLLATE NOCASE ASC
 `);
@@ -779,7 +914,7 @@ app.get('/api/cards', (req, res) => {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
 
-  const entries = listAccountCards.all(user.id).map((row) => ({
+  const entries = listMyCards.all(user.id).map((row) => ({
     cardName: row.card_name,
     quantity: row.quantity,
     askingQuantity:
@@ -905,13 +1040,13 @@ app.post('/api/cards', (req, res) => {
   }
 
   const saveCards = db.transaction((accountId, cardEntries) => {
-    clearAccountCards.run(accountId);
+    clearMyCards.run(accountId);
     for (const entry of cardEntries) {
       const normalizedAskQty =
         entry.askingQuantity === null || entry.askingQuantity === undefined
           ? entry.quantity
           : Math.max(1, Math.min(entry.quantity, Math.floor(Number(entry.askingQuantity))));
-      upsertAccountCard.run(
+      upsertMyCard.run(
         accountId,
         entry.cardName,
         entry.quantity,
