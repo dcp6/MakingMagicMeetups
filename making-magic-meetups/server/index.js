@@ -24,7 +24,7 @@ const defaultAllowedOrigins = [
 ];
 const adminApiKey = process.env.ADMIN_API_KEY || '';
 const adminUsername = process.env.ADMIN_USERNAME || 'admin';
-const adminPassword = process.env.ADMIN_PASSWORD || 'test123';
+const adminPassword = process.env.ADMIN_PASSWORD || 'Magic.12345';
 const mapkitTeamId = String(process.env.MAPKIT_TEAM_ID || '').trim();
 const mapkitKeyId = String(process.env.MAPKIT_KEY_ID || '').trim();
 const mapkitPrivateKeyRaw = String(process.env.MAPKIT_PRIVATE_KEY || '').trim();
