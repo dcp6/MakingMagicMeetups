@@ -2385,11 +2385,11 @@ export default function App() {
                 type="text"
                 placeholder="username"
                 value={accountUsername}
-                onChange={(event) => setAccountUsername(event.target.value.toLowerCase())}
+                onChange={(event) => setAccountUsername(event.target.value)}
                 required
                 minLength={3}
                 maxLength={24}
-                pattern="[a-z0-9_]+"
+                pattern="[A-Za-z0-9_]+"
               />
               <label htmlFor="create-email" className="sr-only">
                 Email
