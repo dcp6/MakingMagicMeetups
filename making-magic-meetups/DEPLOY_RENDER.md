@@ -47,6 +47,7 @@ The repo now includes Postgres schema + migration tools:
 Required env vars:
 
 - `DATABASE_URL` (or `POSTGRES_URL`)
+- `DB_BACKEND=postgres` to enable runtime reads/writes against Postgres
 - Optional `PGSSLMODE=no-verify` for hosted Postgres that requires TLS with relaxed verification.
 
 Suggested migration flow:
@@ -55,4 +56,5 @@ Suggested migration flow:
 2. Run `npm run db:init:postgres`.
 3. Run `DRY_RUN=true npm run db:migrate:sqlite-to-postgres`.
 4. Run `npm run db:migrate:sqlite-to-postgres`.
-5. Verify row counts in Postgres before switching runtime reads/writes.
+5. Set `DB_BACKEND=postgres` on Render and redeploy.
+6. Verify `/api/health` shows `"dbBackend":"postgres"` and `"postgresConfigured":true`.

@@ -6,6 +6,7 @@ import cors from 'cors';
 import Database from 'better-sqlite3';
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import { Pool } from 'pg';
 import { isPostgresConfigured } from './db/postgres/config.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -58,7 +59,37 @@ const passwordResetBaseUrl = String(
 const resendApiKey = String(process.env.RESEND_API_KEY || '').trim();
 const resetEmailFrom = String(process.env.RESET_EMAIL_FROM || '').trim();
 const isPostgresEnabled = isPostgresConfigured();
-const dbBackend = isPostgresEnabled ? 'sqlite (postgres-configured)' : 'sqlite';
+const dbBackendEnv = String(process.env.DB_BACKEND || '').trim().toLowerCase();
+const usePostgresRuntime = isPostgresEnabled && dbBackendEnv === 'postgres';
+const dbBackend = usePostgresRuntime
+  ? 'postgres'
+  : isPostgresEnabled
+    ? 'sqlite (postgres-configured)'
+    : 'sqlite';
+
+function parsePgSsl() {
+  const mode = String(process.env.PGSSLMODE || '').trim().toLowerCase();
+  if (!mode || mode === 'disable') {
+    return undefined;
+  }
+  if (mode === 'no-verify' || mode === 'require') {
+    return { rejectUnauthorized: false };
+  }
+  return { rejectUnauthorized: true };
+}
+
+const pgPool =
+  isPostgresEnabled && process.env.DATABASE_URL
+    ? new Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl: parsePgSsl()
+      })
+    : isPostgresEnabled && process.env.POSTGRES_URL
+      ? new Pool({
+          connectionString: process.env.POSTGRES_URL,
+          ssl: parsePgSsl()
+        })
+      : null;
 
 fs.mkdirSync(dbDir, { recursive: true });
 
@@ -880,6 +911,566 @@ function ensureLoggedInUser(req, res) {
   return user;
 }
 
+async function pgQuery(text, params = []) {
+  if (!pgPool) {
+    throw new Error('Postgres pool is not configured.');
+  }
+  return pgPool.query(text, params);
+}
+
+async function withPgTransaction(run) {
+  if (!pgPool) {
+    throw new Error('Postgres pool is not configured.');
+  }
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await run(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function authenticateLoginRuntime(identifier, password) {
+  if (!usePostgresRuntime) {
+    return authenticateLogin(identifier, password);
+  }
+
+  const normalizedIdentifier = String(identifier || '').trim();
+  if (normalizedIdentifier.toLowerCase() === adminUsername.toLowerCase() && password === adminPassword) {
+    return {
+      id: 0,
+      username: adminUsername,
+      fullName: 'Administrator',
+      email: `${adminUsername}@local`,
+      role: 'admin'
+    };
+  }
+
+  const { rows } = await pgQuery(
+    `
+      SELECT id, username, full_name, email, password_hash
+      FROM accounts
+      WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($2)
+      LIMIT 1
+    `,
+    [normalizedIdentifier, normalizedIdentifier]
+  );
+  const account = rows[0];
+  if (!account || !verifyPassword(password, account.password_hash)) {
+    return null;
+  }
+
+  if (!String(account.password_hash || '').startsWith('scrypt$')) {
+    try {
+      await pgQuery(
+        `UPDATE accounts SET password_hash = $1, password_plain = NULL WHERE id = $2`,
+        [hashPassword(password), account.id]
+      );
+    } catch (_error) {
+      // ignore migration failure and allow login
+    }
+  }
+
+  return {
+    id: account.id,
+    username: account.username,
+    fullName: account.full_name,
+    email: account.email,
+    role: 'user'
+  };
+}
+
+async function ensureLoggedInUserRuntime(req, res) {
+  const credentials = parseBasicAuth(req);
+  if (!credentials) {
+    res.status(401).json({ error: 'Unauthorized.' });
+    return null;
+  }
+
+  const user = await authenticateLoginRuntime(credentials.identifier, credentials.password);
+  if (!user || user.role !== 'user') {
+    res.status(401).json({ error: 'Unauthorized.' });
+    return null;
+  }
+  return user;
+}
+
+async function findAccountByIdRuntime(accountId) {
+  if (!usePostgresRuntime) {
+    return findAccountById.get(accountId);
+  }
+  const { rows } = await pgQuery(
+    `
+      SELECT
+        id, username, full_name, email, created_at,
+        preferred_store_place_id, preferred_store_name, preferred_store_address,
+        preferred_store_url, preferred_store_website, preferred_store_phone
+      FROM accounts
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [accountId]
+  );
+  return rows[0] || null;
+}
+
+async function updatePreferredStoreRuntime(placeId, name, address, url, website, phone, accountId) {
+  if (!usePostgresRuntime) {
+    updatePreferredStore.run(placeId, name, address, url, website, phone, accountId);
+    return;
+  }
+  await pgQuery(
+    `
+      UPDATE accounts
+      SET preferred_store_place_id = $1,
+          preferred_store_name = $2,
+          preferred_store_address = $3,
+          preferred_store_url = $4,
+          preferred_store_website = $5,
+          preferred_store_phone = $6
+      WHERE id = $7
+    `,
+    [placeId, name, address, url, website, phone, accountId]
+  );
+}
+
+async function insertUserRuntime(email) {
+  if (!usePostgresRuntime) {
+    return insertUser.run(email);
+  }
+  const { rows } = await pgQuery(
+    `INSERT INTO users (email) VALUES ($1) RETURNING id, email`,
+    [email]
+  );
+  return { lastInsertRowid: rows[0]?.id, email: rows[0]?.email };
+}
+
+async function insertAccountRuntime(username, fullName, email, passwordHash) {
+  if (!usePostgresRuntime) {
+    return insertAccount.run(username, fullName, email, passwordHash, null);
+  }
+  const { rows } = await pgQuery(
+    `
+      INSERT INTO accounts (username, full_name, email, password_hash, password_plain)
+      VALUES ($1, $2, $3, $4, NULL)
+      RETURNING id, username, email, full_name
+    `,
+    [username, fullName, email, passwordHash]
+  );
+  return { lastInsertRowid: rows[0]?.id };
+}
+
+async function findAccountForPasswordResetRuntime(identifier) {
+  if (!usePostgresRuntime) {
+    return findAccountForPasswordReset.get(identifier, identifier);
+  }
+  const { rows } = await pgQuery(
+    `
+      SELECT id, username, email
+      FROM accounts
+      WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($2)
+      LIMIT 1
+    `,
+    [identifier, identifier]
+  );
+  return rows[0] || null;
+}
+
+async function deleteExpiredPasswordResetTokensRuntime(now) {
+  if (!usePostgresRuntime) {
+    deleteExpiredPasswordResetTokens.run(now);
+    return;
+  }
+  await pgQuery(`DELETE FROM password_reset_tokens WHERE expires_at < $1`, [now]);
+}
+
+async function markPasswordResetTokensUsedForAccountRuntime(now, accountId, client = null) {
+  if (!usePostgresRuntime) {
+    markPasswordResetTokensUsedForAccount.run(now, accountId);
+    return;
+  }
+  const queryClient = client || pgPool;
+  await queryClient.query(
+    `UPDATE password_reset_tokens SET used_at = $1 WHERE account_id = $2 AND used_at IS NULL`,
+    [now, accountId]
+  );
+}
+
+async function insertPasswordResetTokenRuntime(accountId, tokenHash, requestIp, expiresAt, now, client = null) {
+  if (!usePostgresRuntime) {
+    insertPasswordResetToken.run(accountId, tokenHash, requestIp, expiresAt, now);
+    return;
+  }
+  const queryClient = client || pgPool;
+  await queryClient.query(
+    `
+      INSERT INTO password_reset_tokens (account_id, token_hash, request_ip, expires_at, created_at)
+      VALUES ($1, $2, $3, $4, $5)
+    `,
+    [accountId, tokenHash, requestIp, expiresAt, now]
+  );
+}
+
+async function findPasswordResetTokenByHashRuntime(tokenHash) {
+  if (!usePostgresRuntime) {
+    return findPasswordResetTokenByHash.get(tokenHash);
+  }
+  const { rows } = await pgQuery(
+    `SELECT id, account_id, expires_at, used_at FROM password_reset_tokens WHERE token_hash = $1 LIMIT 1`,
+    [tokenHash]
+  );
+  return rows[0] || null;
+}
+
+async function markPasswordResetTokenUsedRuntime(now, tokenId, client = null) {
+  if (!usePostgresRuntime) {
+    return markPasswordResetTokenUsed.run(now, tokenId);
+  }
+  const queryClient = client || pgPool;
+  return queryClient.query(
+    `UPDATE password_reset_tokens SET used_at = $1 WHERE id = $2 AND used_at IS NULL`,
+    [now, tokenId]
+  );
+}
+
+async function logPasswordResetEventRuntime({ accountId = null, identifier = '', requestIp = '', eventType, detail = '' }) {
+  if (!usePostgresRuntime) {
+    logPasswordResetEvent({ accountId, identifier, requestIp, eventType, detail });
+    return;
+  }
+  try {
+    await pgQuery(
+      `
+        INSERT INTO password_reset_events (account_id, identifier, request_ip, event_type, detail, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `,
+      [accountId, identifier || null, requestIp || null, eventType, detail || null, Date.now()]
+    );
+  } catch (_error) {
+    // Audit logging should never break auth flows.
+  }
+}
+
+async function listAccountsForAdminRuntime() {
+  if (!usePostgresRuntime) {
+    return listAccountsForAdmin.all();
+  }
+  const { rows } = await pgQuery(
+    `
+      SELECT id, username, full_name, email, password_plain, password_hash, created_at
+      FROM accounts
+      ORDER BY id DESC
+      LIMIT 1000
+    `
+  );
+  return rows;
+}
+
+async function listPasswordResetEventsForAdminRuntime() {
+  if (!usePostgresRuntime) {
+    return listPasswordResetEventsForAdmin.all();
+  }
+  const { rows } = await pgQuery(
+    `
+      SELECT
+        e.id, e.account_id, a.username, a.email, e.identifier,
+        e.request_ip, e.event_type, e.detail, e.created_at
+      FROM password_reset_events e
+      LEFT JOIN accounts a ON a.id = e.account_id
+      ORDER BY e.created_at DESC, e.id DESC
+      LIMIT 200
+    `
+  );
+  return rows;
+}
+
+async function listUsersRuntime() {
+  if (!usePostgresRuntime) {
+    return listUsers.all();
+  }
+  const { rows } = await pgQuery(
+    `SELECT id, email, created_at FROM users ORDER BY id DESC LIMIT 500`
+  );
+  return rows;
+}
+
+async function findAccountPasswordHashByIdRuntime(accountId) {
+  if (!usePostgresRuntime) {
+    return findAccountPasswordHashById.get(accountId);
+  }
+  const { rows } = await pgQuery(
+    `SELECT password_hash FROM accounts WHERE id = $1 LIMIT 1`,
+    [accountId]
+  );
+  return rows[0] || null;
+}
+
+async function updateAccountProfileAndPasswordRuntime(accountId, fullName, email, nextPassword) {
+  if (!usePostgresRuntime) {
+    const saveTx = db.transaction((id) => {
+      updateAccountProfile.run(fullName, email, id);
+      if (nextPassword !== null && nextPassword.length > 0) {
+        const passwordHash = hashPassword(nextPassword);
+        updateAccountPassword.run(passwordHash, null, id);
+      }
+    });
+    saveTx(accountId);
+    return;
+  }
+
+  await withPgTransaction(async (client) => {
+    await client.query(
+      `UPDATE accounts SET full_name = $1, email = $2 WHERE id = $3`,
+      [fullName, email, accountId]
+    );
+    if (nextPassword !== null && nextPassword.length > 0) {
+      await client.query(
+        `UPDATE accounts SET password_hash = $1, password_plain = NULL WHERE id = $2`,
+        [hashPassword(nextPassword), accountId]
+      );
+    }
+  });
+}
+
+async function listMyCardsRuntime(accountId) {
+  if (!usePostgresRuntime) {
+    return listMyCards.all(accountId);
+  }
+  const { rows } = await pgQuery(
+    `
+      SELECT
+        card_name, quantity, requesting, asking_quantity, asking_price_cents,
+        scryfall_id, set_code, set_name, collector_number, image_small, image_normal,
+        image_small_back, image_normal_back
+      FROM my_cards
+      WHERE account_id = $1
+      ORDER BY LOWER(card_name) ASC
+    `,
+    [accountId]
+  );
+  return rows;
+}
+
+async function deleteMyCardByNameRuntime(accountId, cardName) {
+  if (!usePostgresRuntime) {
+    return deleteMyCardByName.run(accountId, cardName);
+  }
+  return pgQuery(
+    `DELETE FROM my_cards WHERE account_id = $1 AND LOWER(card_name) = LOWER($2)`,
+    [accountId, cardName]
+  );
+}
+
+async function saveCardsRuntime(accountId, entries, saveMode) {
+  if (!usePostgresRuntime) {
+    const saveCards = db.transaction((id, cardEntries) => {
+      for (const entry of cardEntries) {
+        const normalizedAskQty =
+          entry.askingQuantity === null || entry.askingQuantity === undefined
+            ? entry.quantity
+            : Math.max(0, Math.floor(Number(entry.askingQuantity)));
+        const upsert = saveMode === 'add' ? upsertMyCardAdd : upsertMyCardReplace;
+        upsert.run(
+          id,
+          entry.cardName,
+          entry.quantity,
+          entry.requesting ? 1 : 0,
+          normalizedAskQty,
+          entry.askingPriceCents ?? null,
+          entry.scryfallId ?? null,
+          entry.setCode ?? null,
+          entry.setName ?? null,
+          entry.collectorNumber ?? null,
+          entry.imageSmall ?? null,
+          entry.imageNormal ?? null,
+          entry.imageSmallBack ?? null,
+          entry.imageNormalBack ?? null
+        );
+      }
+      consolidateMyCardsByIdentity(id);
+    });
+    saveCards(accountId, entries);
+    return;
+  }
+
+  await withPgTransaction(async (client) => {
+    for (const entry of entries) {
+      const normalizedAskQty =
+        entry.askingQuantity === null || entry.askingQuantity === undefined
+          ? entry.quantity
+          : Math.max(0, Math.floor(Number(entry.askingQuantity)));
+
+      if (saveMode === 'add') {
+        await client.query(
+          `
+            INSERT INTO my_cards (
+              account_id, card_name, quantity, requesting, asking_quantity, asking_price_cents,
+              scryfall_id, set_code, set_name, collector_number, image_small, image_normal,
+              image_small_back, image_normal_back
+            )
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+            ON CONFLICT(account_id, card_name) DO UPDATE SET
+              quantity = my_cards.quantity + EXCLUDED.quantity,
+              requesting = GREATEST(my_cards.requesting, EXCLUDED.requesting),
+              asking_quantity = COALESCE(my_cards.asking_quantity, my_cards.quantity) +
+                COALESCE(EXCLUDED.asking_quantity, EXCLUDED.quantity),
+              asking_price_cents = COALESCE(EXCLUDED.asking_price_cents, my_cards.asking_price_cents),
+              scryfall_id = COALESCE(EXCLUDED.scryfall_id, my_cards.scryfall_id),
+              set_code = COALESCE(EXCLUDED.set_code, my_cards.set_code),
+              set_name = COALESCE(EXCLUDED.set_name, my_cards.set_name),
+              collector_number = COALESCE(EXCLUDED.collector_number, my_cards.collector_number),
+              image_small = COALESCE(EXCLUDED.image_small, my_cards.image_small),
+              image_normal = COALESCE(EXCLUDED.image_normal, my_cards.image_normal),
+              image_small_back = COALESCE(EXCLUDED.image_small_back, my_cards.image_small_back),
+              image_normal_back = COALESCE(EXCLUDED.image_normal_back, my_cards.image_normal_back),
+              updated_at = NOW()
+          `,
+          [
+            accountId,
+            entry.cardName,
+            entry.quantity,
+            entry.requesting ? 1 : 0,
+            normalizedAskQty,
+            entry.askingPriceCents ?? null,
+            entry.scryfallId ?? null,
+            entry.setCode ?? null,
+            entry.setName ?? null,
+            entry.collectorNumber ?? null,
+            entry.imageSmall ?? null,
+            entry.imageNormal ?? null,
+            entry.imageSmallBack ?? null,
+            entry.imageNormalBack ?? null
+          ]
+        );
+      } else {
+        await client.query(
+          `
+            INSERT INTO my_cards (
+              account_id, card_name, quantity, requesting, asking_quantity, asking_price_cents,
+              scryfall_id, set_code, set_name, collector_number, image_small, image_normal,
+              image_small_back, image_normal_back
+            )
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+            ON CONFLICT(account_id, card_name) DO UPDATE SET
+              quantity = EXCLUDED.quantity,
+              requesting = EXCLUDED.requesting,
+              asking_quantity = EXCLUDED.asking_quantity,
+              asking_price_cents = EXCLUDED.asking_price_cents,
+              scryfall_id = EXCLUDED.scryfall_id,
+              set_code = EXCLUDED.set_code,
+              set_name = EXCLUDED.set_name,
+              collector_number = EXCLUDED.collector_number,
+              image_small = EXCLUDED.image_small,
+              image_normal = EXCLUDED.image_normal,
+              image_small_back = EXCLUDED.image_small_back,
+              image_normal_back = EXCLUDED.image_normal_back,
+              updated_at = NOW()
+          `,
+          [
+            accountId,
+            entry.cardName,
+            entry.quantity,
+            entry.requesting ? 1 : 0,
+            normalizedAskQty,
+            entry.askingPriceCents ?? null,
+            entry.scryfallId ?? null,
+            entry.setCode ?? null,
+            entry.setName ?? null,
+            entry.collectorNumber ?? null,
+            entry.imageSmall ?? null,
+            entry.imageNormal ?? null,
+            entry.imageSmallBack ?? null,
+            entry.imageNormalBack ?? null
+          ]
+        );
+      }
+    }
+
+    // Merge duplicate identities (same scryfall id, else same normalized name) and keep one row per identity.
+    await client.query(
+      `
+        WITH grouped AS (
+          SELECT
+            account_id,
+            CASE
+              WHEN NULLIF(TRIM(scryfall_id), '') IS NOT NULL THEN 'id:' || LOWER(TRIM(scryfall_id))
+              ELSE 'name:' || LOWER(TRIM(card_name))
+            END AS identity_key,
+            MIN(id) AS keep_id,
+            SUM(quantity) AS total_quantity,
+            MAX(requesting) AS max_requesting,
+            SUM(COALESCE(asking_quantity, quantity)) AS total_asking_quantity
+          FROM my_cards
+          WHERE account_id = $1
+          GROUP BY account_id, identity_key
+        ),
+        picked_price AS (
+          SELECT DISTINCT ON (
+            CASE
+              WHEN NULLIF(TRIM(scryfall_id), '') IS NOT NULL THEN 'id:' || LOWER(TRIM(scryfall_id))
+              ELSE 'name:' || LOWER(TRIM(card_name))
+            END
+          )
+            CASE
+              WHEN NULLIF(TRIM(scryfall_id), '') IS NOT NULL THEN 'id:' || LOWER(TRIM(scryfall_id))
+              ELSE 'name:' || LOWER(TRIM(card_name))
+            END AS identity_key,
+            asking_price_cents
+          FROM my_cards
+          WHERE account_id = $1
+            AND asking_price_cents IS NOT NULL
+          ORDER BY
+            CASE
+              WHEN NULLIF(TRIM(scryfall_id), '') IS NOT NULL THEN 'id:' || LOWER(TRIM(scryfall_id))
+              ELSE 'name:' || LOWER(TRIM(card_name))
+            END,
+            updated_at DESC,
+            id DESC
+        )
+        UPDATE my_cards m
+        SET
+          quantity = g.total_quantity,
+          requesting = g.max_requesting,
+          asking_quantity = g.total_asking_quantity,
+          asking_price_cents = COALESCE(p.asking_price_cents, m.asking_price_cents),
+          updated_at = NOW()
+        FROM grouped g
+        LEFT JOIN picked_price p ON p.identity_key = g.identity_key
+        WHERE m.id = g.keep_id
+      `,
+      [accountId]
+    );
+
+    await client.query(
+      `
+        DELETE FROM my_cards m
+        USING (
+          SELECT
+            id,
+            MIN(id) OVER (
+              PARTITION BY account_id,
+              CASE
+                WHEN NULLIF(TRIM(scryfall_id), '') IS NOT NULL THEN 'id:' || LOWER(TRIM(scryfall_id))
+                ELSE 'name:' || LOWER(TRIM(card_name))
+              END
+            ) AS keep_id
+          FROM my_cards
+          WHERE account_id = $1
+        ) x
+        WHERE m.id = x.id
+          AND x.id <> x.keep_id
+      `,
+      [accountId]
+    );
+  });
+}
+
 const loginAttemptStore = new Map();
 const passwordResetAttemptStore = new Map();
 
@@ -1109,7 +1700,7 @@ app.get('/api/mapkit/token', (_req, res) => {
 });
 
 app.patch('/api/me/preferred-store', async (req, res) => {
-  const user = ensureLoggedInUser(req, res);
+  const user = await ensureLoggedInUserRuntime(req, res);
   if (!user) {
     return;
   }
@@ -1121,8 +1712,8 @@ app.patch('/api/me/preferred-store', async (req, res) => {
   const placeId = placeIdRaw ? placeIdRaw : null;
 
   if (!placeId) {
-    updatePreferredStore.run(null, null, null, null, null, null, user.id);
-    const account = findAccountById.get(user.id);
+    await updatePreferredStoreRuntime(null, null, null, null, null, null, user.id);
+    const account = await findAccountByIdRuntime(user.id);
     return res.json({
       ok: true,
       preferredStore: null,
@@ -1143,9 +1734,9 @@ app.patch('/api/me/preferred-store', async (req, res) => {
   const phone = String(req.body?.phone || '').trim() || null;
 
   try {
-    updatePreferredStore.run(placeId, name, address, url, website, phone, user.id);
+    await updatePreferredStoreRuntime(placeId, name, address, url, website, phone, user.id);
 
-    const account = findAccountById.get(user.id);
+    const account = await findAccountByIdRuntime(user.id);
     return res.json({
       ok: true,
       preferredStore: {
@@ -1180,7 +1771,7 @@ app.post('/api/admin/login', (req, res) => {
   return res.status(401).json({ error: 'Invalid admin credentials.' });
 });
 
-app.post('/api/users', (req, res) => {
+app.post('/api/users', async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -1188,10 +1779,13 @@ app.post('/api/users', (req, res) => {
   }
 
   try {
-    const result = insertUser.run(email);
+    const result = await insertUserRuntime(email);
     return res.status(201).json({ id: result.lastInsertRowid, email });
   } catch (error) {
-    if (String(error?.message || '').includes('UNIQUE constraint failed')) {
+    if (
+      String(error?.message || '').includes('UNIQUE constraint failed') ||
+      String(error?.code || '') === '23505'
+    ) {
       return res.status(409).json({ error: 'Email already subscribed.' });
     }
 
@@ -1199,7 +1793,7 @@ app.post('/api/users', (req, res) => {
   }
 });
 
-app.post('/api/accounts', (req, res) => {
+app.post('/api/accounts', async (req, res) => {
   const username = String(req.body?.username || '').trim();
   const fullName = String(req.body?.fullName || '').trim();
   const email = String(req.body?.email || '').trim().toLowerCase();
@@ -1225,10 +1819,13 @@ app.post('/api/accounts', (req, res) => {
 
   try {
     const passwordHash = hashPassword(password);
-    const result = insertAccount.run(username, fullName, email, passwordHash, null);
+    const result = await insertAccountRuntime(username, fullName, email, passwordHash);
     return res.status(201).json({ id: result.lastInsertRowid, username, email, fullName });
   } catch (error) {
-    if (String(error?.message || '').includes('UNIQUE constraint failed')) {
+    if (
+      String(error?.message || '').includes('UNIQUE constraint failed') ||
+      String(error?.code || '') === '23505'
+    ) {
       return res
         .status(409)
         .json({ error: 'An account with this email or username already exists.' });
@@ -1238,7 +1835,7 @@ app.post('/api/accounts', (req, res) => {
   }
 });
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const throttleKey = getLoginThrottleKey(req);
   if (isLoginRateLimited(throttleKey)) {
     return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
@@ -1252,7 +1849,7 @@ app.post('/api/login', (req, res) => {
     return res.status(400).json({ error: 'Please provide username/email and password.' });
   }
 
-  const user = authenticateLogin(identifier, password);
+  const user = await authenticateLoginRuntime(identifier, password);
   if (!user) {
     recordLoginAttempt(throttleKey, false);
     return res.status(401).json({ error: 'Invalid login credentials.' });
@@ -1272,7 +1869,7 @@ app.post('/api/password-reset/request', async (req, res) => {
   }
 
   if (!resendApiKey || !resetEmailFrom) {
-    logPasswordResetEvent({
+    await logPasswordResetEventRuntime({
       accountId: null,
       identifier: String(req.body?.identifier || '').trim(),
       requestIp: getRequestIp(req),
@@ -1287,7 +1884,7 @@ app.post('/api/password-reset/request', async (req, res) => {
   const identifier = String(req.body?.identifier || '').trim();
   if (!identifier) {
     recordPasswordResetAttempt(throttleKey, false);
-    logPasswordResetEvent({
+    await logPasswordResetEventRuntime({
       accountId: null,
       identifier,
       requestIp: getRequestIp(req),
@@ -1303,9 +1900,9 @@ app.post('/api/password-reset/request', async (req, res) => {
   };
 
   try {
-    const account = findAccountForPasswordReset.get(identifier, identifier);
+    const account = await findAccountForPasswordResetRuntime(identifier);
     if (!account) {
-      logPasswordResetEvent({
+      await logPasswordResetEventRuntime({
         accountId: null,
         identifier,
         requestIp: getRequestIp(req),
@@ -1317,18 +1914,33 @@ app.post('/api/password-reset/request', async (req, res) => {
     }
 
     const now = Date.now();
-    deleteExpiredPasswordResetTokens.run(now);
+    await deleteExpiredPasswordResetTokensRuntime(now);
 
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = hashResetToken(rawToken);
     const expiresAt = now + passwordResetTokenTtlMs;
 
-    const tx = db.transaction(() => {
-      markPasswordResetTokensUsedForAccount.run(now, account.id);
-      insertPasswordResetToken.run(account.id, tokenHash, getRequestIp(req), expiresAt, now);
-    });
-    tx();
-    logPasswordResetEvent({
+    if (usePostgresRuntime) {
+      await withPgTransaction(async (client) => {
+        await markPasswordResetTokensUsedForAccountRuntime(now, account.id, client);
+        await insertPasswordResetTokenRuntime(
+          account.id,
+          tokenHash,
+          getRequestIp(req),
+          expiresAt,
+          now,
+          client
+        );
+      });
+    } else {
+      const tx = db.transaction(() => {
+        markPasswordResetTokensUsedForAccount.run(now, account.id);
+        insertPasswordResetToken.run(account.id, tokenHash, getRequestIp(req), expiresAt, now);
+      });
+      tx();
+    }
+
+    await logPasswordResetEventRuntime({
       accountId: account.id,
       identifier,
       requestIp: getRequestIp(req),
@@ -1343,7 +1955,7 @@ app.post('/api/password-reset/request', async (req, res) => {
         username: account.username,
         resetUrl
       });
-      logPasswordResetEvent({
+      await logPasswordResetEventRuntime({
         accountId: account.id,
         identifier,
         requestIp: getRequestIp(req),
@@ -1352,7 +1964,7 @@ app.post('/api/password-reset/request', async (req, res) => {
       });
     } catch (emailError) {
       console.error('Password reset email delivery failed:', emailError);
-      logPasswordResetEvent({
+      await logPasswordResetEventRuntime({
         accountId: account.id,
         identifier,
         requestIp: getRequestIp(req),
@@ -1366,7 +1978,7 @@ app.post('/api/password-reset/request', async (req, res) => {
     recordPasswordResetAttempt(throttleKey, true);
     return res.json(genericResponse);
   } catch (_error) {
-    logPasswordResetEvent({
+    await logPasswordResetEventRuntime({
       accountId: null,
       identifier,
       requestIp: getRequestIp(req),
@@ -1378,12 +1990,12 @@ app.post('/api/password-reset/request', async (req, res) => {
   }
 });
 
-app.post('/api/password-reset/confirm', (req, res) => {
+app.post('/api/password-reset/confirm', async (req, res) => {
   const rawToken = String(req.body?.token || '').trim();
   const nextPassword = String(req.body?.password || '');
 
   if (!rawToken) {
-    logPasswordResetEvent({
+    await logPasswordResetEventRuntime({
       accountId: null,
       identifier: '',
       requestIp: getRequestIp(req),
@@ -1393,7 +2005,7 @@ app.post('/api/password-reset/confirm', (req, res) => {
     return res.status(400).json({ error: 'Reset token is required.' });
   }
   if (!nextPassword || nextPassword.length < 6) {
-    logPasswordResetEvent({
+    await logPasswordResetEventRuntime({
       accountId: null,
       identifier: '',
       requestIp: getRequestIp(req),
@@ -1404,11 +2016,11 @@ app.post('/api/password-reset/confirm', (req, res) => {
   }
 
   const now = Date.now();
-  deleteExpiredPasswordResetTokens.run(now);
+  await deleteExpiredPasswordResetTokensRuntime(now);
   const tokenHash = hashResetToken(rawToken);
-  const resetTokenRow = findPasswordResetTokenByHash.get(tokenHash);
+  const resetTokenRow = await findPasswordResetTokenByHashRuntime(tokenHash);
   if (!resetTokenRow) {
-    logPasswordResetEvent({
+    await logPasswordResetEventRuntime({
       accountId: null,
       identifier: '',
       requestIp: getRequestIp(req),
@@ -1418,7 +2030,7 @@ app.post('/api/password-reset/confirm', (req, res) => {
     return res.status(400).json({ error: 'Invalid or expired reset link.' });
   }
   if (resetTokenRow.used_at !== null && resetTokenRow.used_at !== undefined) {
-    logPasswordResetEvent({
+    await logPasswordResetEventRuntime({
       accountId: resetTokenRow.account_id,
       identifier: '',
       requestIp: getRequestIp(req),
@@ -1428,7 +2040,7 @@ app.post('/api/password-reset/confirm', (req, res) => {
     return res.status(400).json({ error: 'Invalid or expired reset link.' });
   }
   if (Number(resetTokenRow.expires_at) <= now) {
-    logPasswordResetEvent({
+    await logPasswordResetEventRuntime({
       accountId: resetTokenRow.account_id,
       identifier: '',
       requestIp: getRequestIp(req),
@@ -1439,14 +2051,26 @@ app.post('/api/password-reset/confirm', (req, res) => {
   }
 
   try {
-    const tx = db.transaction(() => {
-      const passwordHash = hashPassword(nextPassword);
-      updateAccountPassword.run(passwordHash, null, resetTokenRow.account_id);
-      markPasswordResetTokenUsed.run(now, resetTokenRow.id);
-      markPasswordResetTokensUsedForAccount.run(now, resetTokenRow.account_id);
-    });
-    tx();
-    logPasswordResetEvent({
+    if (usePostgresRuntime) {
+      await withPgTransaction(async (client) => {
+        const passwordHash = hashPassword(nextPassword);
+        await client.query(
+          `UPDATE accounts SET password_hash = $1, password_plain = NULL WHERE id = $2`,
+          [passwordHash, resetTokenRow.account_id]
+        );
+        await markPasswordResetTokenUsedRuntime(now, resetTokenRow.id, client);
+        await markPasswordResetTokensUsedForAccountRuntime(now, resetTokenRow.account_id, client);
+      });
+    } else {
+      const tx = db.transaction(() => {
+        const passwordHash = hashPassword(nextPassword);
+        updateAccountPassword.run(passwordHash, null, resetTokenRow.account_id);
+        markPasswordResetTokenUsed.run(now, resetTokenRow.id);
+        markPasswordResetTokensUsedForAccount.run(now, resetTokenRow.account_id);
+      });
+      tx();
+    }
+    await logPasswordResetEventRuntime({
       accountId: resetTokenRow.account_id,
       identifier: '',
       requestIp: getRequestIp(req),
@@ -1455,7 +2079,7 @@ app.post('/api/password-reset/confirm', (req, res) => {
     });
     return res.json({ ok: true });
   } catch (_error) {
-    logPasswordResetEvent({
+    await logPasswordResetEventRuntime({
       accountId: resetTokenRow.account_id,
       identifier: '',
       requestIp: getRequestIp(req),
@@ -1466,13 +2090,13 @@ app.post('/api/password-reset/confirm', (req, res) => {
   }
 });
 
-app.get('/api/me', (req, res) => {
-  const user = ensureLoggedInUser(req, res);
+app.get('/api/me', async (req, res) => {
+  const user = await ensureLoggedInUserRuntime(req, res);
   if (!user) {
     return;
   }
 
-  const account = findAccountById.get(user.id);
+  const account = await findAccountByIdRuntime(user.id);
   if (!account) {
     return res.status(404).json({ error: 'Account not found.' });
   }
@@ -1499,13 +2123,13 @@ app.get('/api/me', (req, res) => {
   });
 });
 
-app.patch('/api/me', (req, res) => {
+app.patch('/api/me', async (req, res) => {
   const credentials = parseBasicAuth(req);
   if (!credentials) {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
 
-  const user = authenticateLogin(credentials.identifier, credentials.password);
+  const user = await authenticateLoginRuntime(credentials.identifier, credentials.password);
   if (!user || user.role !== 'user') {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
@@ -1536,7 +2160,7 @@ app.patch('/api/me', (req, res) => {
     if (!currentPassword) {
       return res.status(400).json({ error: 'Please provide your current password.' });
     }
-    const row = findAccountPasswordHashById.get(user.id);
+    const row = await findAccountPasswordHashByIdRuntime(user.id);
     if (!row?.password_hash) {
       return res.status(500).json({ error: 'Failed to verify current password.' });
     }
@@ -1545,24 +2169,19 @@ app.patch('/api/me', (req, res) => {
     }
   }
 
-  const saveTx = db.transaction((accountId) => {
-    updateAccountProfile.run(fullName, email, accountId);
-    if (nextPassword !== null && nextPassword.length > 0) {
-      const passwordHash = hashPassword(nextPassword);
-      updateAccountPassword.run(passwordHash, null, accountId);
-    }
-  });
-
   try {
-    saveTx(user.id);
+    await updateAccountProfileAndPasswordRuntime(user.id, fullName, email, nextPassword);
   } catch (error) {
-    if (String(error?.message || '').includes('UNIQUE constraint failed')) {
+    if (
+      String(error?.message || '').includes('UNIQUE constraint failed') ||
+      String(error?.code || '') === '23505'
+    ) {
       return res.status(409).json({ error: 'Email already in use.' });
     }
     return res.status(500).json({ error: 'Failed to update account.' });
   }
 
-  const account = findAccountById.get(user.id);
+  const account = await findAccountByIdRuntime(user.id);
   return res.json({
     ok: true,
     account: {
@@ -1575,18 +2194,19 @@ app.patch('/api/me', (req, res) => {
   });
 });
 
-app.get('/api/cards', (req, res) => {
+app.get('/api/cards', async (req, res) => {
   const credentials = parseBasicAuth(req);
   if (!credentials) {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
 
-  const user = authenticateLogin(credentials.identifier, credentials.password);
+  const user = await authenticateLoginRuntime(credentials.identifier, credentials.password);
   if (!user || user.role !== 'user') {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
 
-  const entries = listMyCards.all(user.id).map((row) => ({
+  const rows = await listMyCardsRuntime(user.id);
+  const entries = rows.map((row) => ({
     cardName: row.card_name,
     quantity: row.quantity,
     requesting: Boolean(row.requesting),
@@ -1616,13 +2236,13 @@ app.get('/api/cards', (req, res) => {
   return res.json({ cards, entries, totalCards: cards.length });
 });
 
-app.post('/api/cards', (req, res) => {
+app.post('/api/cards', async (req, res) => {
   const credentials = parseBasicAuth(req);
   if (!credentials) {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
 
-  const user = authenticateLogin(credentials.identifier, credentials.password);
+  const user = await authenticateLoginRuntime(credentials.identifier, credentials.password);
   if (!user || user.role !== 'user') {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
@@ -1730,34 +2350,7 @@ app.post('/api/cards', (req, res) => {
     return res.status(400).json({ error: 'Card list is too large (max 1000 unique / 5000 total).' });
   }
 
-  const saveCards = db.transaction((accountId, cardEntries) => {
-    for (const entry of cardEntries) {
-      const normalizedAskQty =
-        entry.askingQuantity === null || entry.askingQuantity === undefined
-          ? entry.quantity
-          : Math.max(0, Math.floor(Number(entry.askingQuantity)));
-      const upsert = saveMode === 'add' ? upsertMyCardAdd : upsertMyCardReplace;
-      upsert.run(
-        accountId,
-        entry.cardName,
-        entry.quantity,
-        entry.requesting ? 1 : 0,
-        normalizedAskQty,
-        entry.askingPriceCents ?? null,
-        entry.scryfallId ?? null,
-        entry.setCode ?? null,
-        entry.setName ?? null,
-        entry.collectorNumber ?? null,
-        entry.imageSmall ?? null,
-        entry.imageNormal ?? null,
-        entry.imageSmallBack ?? null,
-        entry.imageNormalBack ?? null
-      );
-    }
-    consolidateMyCardsByIdentity(accountId);
-  });
-
-  saveCards(user.id, entries);
+  await saveCardsRuntime(user.id, entries, saveMode);
   const expandedCards = [];
   for (const entry of entries) {
     for (let i = 0; i < entry.quantity; i += 1) {
@@ -1773,13 +2366,13 @@ app.post('/api/cards', (req, res) => {
   });
 });
 
-app.delete('/api/cards', (req, res) => {
+app.delete('/api/cards', async (req, res) => {
   const credentials = parseBasicAuth(req);
   if (!credentials) {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
 
-  const user = authenticateLogin(credentials.identifier, credentials.password);
+  const user = await authenticateLoginRuntime(credentials.identifier, credentials.password);
   if (!user || user.role !== 'user') {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
@@ -1789,11 +2382,11 @@ app.delete('/api/cards', (req, res) => {
     return res.status(400).json({ error: 'Please provide a cardName.' });
   }
 
-  const info = deleteMyCardByName.run(user.id, cardName);
-  return res.json({ ok: true, deleted: info.changes || 0 });
+  const info = await deleteMyCardByNameRuntime(user.id, cardName);
+  return res.json({ ok: true, deleted: info.changes || info.rowCount || 0 });
 });
 
-app.get('/api/users', (_req, res) => {
+app.get('/api/users', async (_req, res) => {
   const basicAuth = String(_req.header('authorization') || '');
   const basicPrefix = 'Basic ';
   let basicAuthorized = false;
@@ -1809,7 +2402,8 @@ app.get('/api/users', (_req, res) => {
   }
 
   if (basicAuthorized) {
-    return res.json({ users: listUsers.all() });
+    const users = await listUsersRuntime();
+    return res.json({ users });
   }
 
   if (!adminApiKey) {
@@ -1821,21 +2415,23 @@ app.get('/api/users', (_req, res) => {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
 
-  res.json({ users: listUsers.all() });
+  const users = await listUsersRuntime();
+  res.json({ users });
 });
 
-app.get('/api/admin/accounts', (req, res) => {
+app.get('/api/admin/accounts', async (req, res) => {
   const credentials = parseBasicAuth(req);
   if (!credentials) {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
 
-  const user = authenticateLogin(credentials.identifier, credentials.password);
+  const user = await authenticateLoginRuntime(credentials.identifier, credentials.password);
   if (!user || user.role !== 'admin') {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
 
-  const accounts = listAccountsForAdmin.all().map((account) => ({
+  const accountRows = await listAccountsForAdminRuntime();
+  const accounts = accountRows.map((account) => ({
     id: account.id,
     username: account.username,
     fullName: account.full_name,
@@ -1847,18 +2443,19 @@ app.get('/api/admin/accounts', (req, res) => {
   return res.json({ accounts });
 });
 
-app.get('/api/admin/password-reset-events', (req, res) => {
+app.get('/api/admin/password-reset-events', async (req, res) => {
   const credentials = parseBasicAuth(req);
   if (!credentials) {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
 
-  const user = authenticateLogin(credentials.identifier, credentials.password);
+  const user = await authenticateLoginRuntime(credentials.identifier, credentials.password);
   if (!user || user.role !== 'admin') {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
 
-  const events = listPasswordResetEventsForAdmin.all().map((row) => ({
+  const eventRows = await listPasswordResetEventsForAdminRuntime();
+  const events = eventRows.map((row) => ({
     id: row.id,
     accountId: row.account_id || null,
     username: row.username || null,
