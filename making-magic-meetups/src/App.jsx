@@ -1002,11 +1002,13 @@ export default function App() {
 
   async function handleCardListUpload(event) {
     event.preventDefault();
+    // Every upload action starts fresh so stale "Just Saved" rows do not linger.
+    setShowingJustSavedCards(false);
+    setUploadedCards([]);
+    setCardCostTotal(0);
     const entries = parseCardEntries(cardInputText);
 
     if (entries.length === 0) {
-      setUploadedCards([]);
-      setCardCostTotal(0);
       setCardUploadFeedback('Please add at least one card name.');
       return;
     }
@@ -1222,8 +1224,10 @@ export default function App() {
           : `Saved ${entries.length} unique card${entries.length === 1 ? '' : 's'} to My Cards.`
       );
       setCardInputText('');
-      setShowingJustSavedCards(true);
-      await loadUserCardsFromApi(authHeader);
+      // Clear staging rows after each save; user can upload again for the next action.
+      setUploadedCards([]);
+      setCardCostTotal(0);
+      setShowingJustSavedCards(false);
     } catch (_error) {
       setCardUploadFeedback('Could not save card list right now.');
     } finally {
