@@ -575,7 +575,7 @@ h1 {
 }
 
 .market-status-select {
-  min-height: 1.95rem;
+  min-height: 2rem;
   width: 100%;
   max-width: 5.4rem;
   margin: 0 auto;
@@ -587,6 +587,8 @@ h1 {
   font-size: 0.78rem;
   font-weight: 700;
   padding: 0 0.35rem;
+  text-align: center;
+  text-align-last: center;
 }
 
 .requesting-toggle {
