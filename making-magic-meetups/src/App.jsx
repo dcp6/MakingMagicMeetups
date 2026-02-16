@@ -2071,7 +2071,10 @@ export default function App() {
                     )}
 
                     <h2>Requesting</h2>
-                    <p className="table-total">Table Total: ${requestingTotal.toFixed(2)}</p>
+                    <p className="table-total">
+                      Table Total: ${requestingTotal.toFixed(2)} · Requesting Total: {requestingQtyTotal}{' '}
+                      {requestingQtyTotal === 1 ? 'card' : 'cards'}
+                    </p>
                     {requestingPairs.length === 0 ? (
                       <p className="notice subtle">No cards are marked as requesting yet.</p>
                     ) : (
