@@ -2413,27 +2413,29 @@ export default function App() {
               <label htmlFor="create-password" className="sr-only">
                 Password
               </label>
-              <input
-                id="create-password"
-                type="password"
-                placeholder="Create password"
-                value={accountPassword}
-                onChange={(event) => setAccountPassword(event.target.value)}
-                required
-                minLength={6}
-              />
-              <label htmlFor="create-password-confirm" className="sr-only">
-                Confirm Password
-              </label>
-              <input
-                id="create-password-confirm"
-                type="password"
-                placeholder="Confirm password"
-                value={accountPasswordConfirm}
-                onChange={(event) => setAccountPasswordConfirm(event.target.value)}
-                required
-                minLength={6}
-              />
+              <div className="create-password-row">
+                <input
+                  id="create-password"
+                  type="password"
+                  placeholder="Create password"
+                  value={accountPassword}
+                  onChange={(event) => setAccountPassword(event.target.value)}
+                  required
+                  minLength={6}
+                />
+                <label htmlFor="create-password-confirm" className="sr-only">
+                  Confirm Password
+                </label>
+                <input
+                  id="create-password-confirm"
+                  type="password"
+                  placeholder="Confirm password"
+                  value={accountPasswordConfirm}
+                  onChange={(event) => setAccountPasswordConfirm(event.target.value)}
+                  required
+                  minLength={6}
+                />
+              </div>
               <button type="submit" disabled={isAccountSubmitting}>
                 {isAccountSubmitting ? 'Creating...' : 'Create Account'}
               </button>
