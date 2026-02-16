@@ -9,6 +9,8 @@
     "seed:mock-users": "node server/seed-mock-users.js",
     "seed:prod-accounts": "node server/seed-production-accounts.js",
     "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "preview": "vite preview",
     "start": "node server/index.js",
     "start:server": "node server/index.js"
@@ -22,6 +24,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "vite": "^5.4.11"
+    "vite": "^5.4.11",
+    "vitest": "^4.0.18"
   }
 }

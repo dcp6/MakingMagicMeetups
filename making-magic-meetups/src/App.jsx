@@ -1,5 +1,6 @@
 import React from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { applyAskingQuantityChange, applyQuantityChange, buildMyCardsTableModel } from './tableLogic';
 
 const configuredApiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || '').trim();
 const sessionStorageKey = 'making_magic_meetups_session_v1';
@@ -1053,17 +1054,8 @@ export default function App() {
   }
 
   function handleQuantityChange(index, nextValue) {
-    const raw = Number(nextValue);
-    const quantity = Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 0;
-
     setUploadedCards((previous) => {
-      const next = previous.map((card, i) => {
-        if (i !== index) {
-          return card;
-        }
-        const lineTotalUsd = card.unitUsd !== null ? card.unitUsd * quantity : null;
-        return { ...card, quantity, lineTotalUsd };
-      });
+      const next = applyQuantityChange(previous, index, nextValue);
       setCardCostTotal(recomputeCostTotal(next));
 
       // Keep the textarea aligned with the current quantities.
@@ -1109,20 +1101,7 @@ export default function App() {
   }
 
   function handleRequestingAskingQuantityChange(index, nextValue) {
-    const raw = Number(nextValue);
-    setUploadedCards((previous) =>
-      previous.map((card, i) => {
-        if (i !== index) {
-          return card;
-        }
-        const askingQuantity =
-          Number.isFinite(raw) && raw >= 0 ? Math.max(0, Math.floor(raw)) : 0;
-        return {
-          ...card,
-          askingQuantity
-        };
-      })
-    );
+    setUploadedCards((previous) => applyAskingQuantityChange(previous, index, nextValue));
   }
 
   async function loadVersionOptionsFor(cardKey, cardName) {
@@ -1872,45 +1851,15 @@ export default function App() {
   }
 
   if (route === 'my-cards') {
-    const sortedPairs = getSortedCardsWithIndex(uploadedCards, cardSortMode);
-    const requestingPairs = sortedPairs.filter(({ card }) => Boolean(card.requesting));
-    const savedPairs = sortedPairs.filter(({ card }) => !card.requesting);
-
-    function totalsForPairs(pairs) {
-      return pairs.reduce((sum, { card }) => {
-        const lineTotal =
-          card.lineTotalUsd === null || card.lineTotalUsd === undefined
-            ? null
-            : Number(card.lineTotalUsd);
-        if (lineTotal !== null && Number.isFinite(lineTotal)) {
-          return sum + lineTotal;
-        }
-        return sum;
-      }, 0);
-    }
-
-    const savedTotal = totalsForPairs(savedPairs);
-    const requestingTotal = totalsForPairs(requestingPairs);
-    const requestingTotalValue = requestingPairs.reduce((sum, { card }) => {
-      const askingQuantityRaw =
-        card.askingQuantity === null || card.askingQuantity === undefined
-          ? Number(card.quantity) || 0
-          : Number(card.askingQuantity);
-      const askingQuantity = Number.isFinite(askingQuantityRaw) && askingQuantityRaw > 0 ? askingQuantityRaw : 0;
-      const askingPriceCents =
-        card.askingPriceCents === null || card.askingPriceCents === undefined
-          ? null
-          : Number(card.askingPriceCents);
-      if (askingPriceCents === null || !Number.isFinite(askingPriceCents) || askingPriceCents < 0) {
-        return sum;
-      }
-      return sum + (askingQuantity * askingPriceCents) / 100;
-    }, 0);
-    const savedQtyTotal = savedPairs.reduce((sum, { card }) => sum + (Number(card.quantity) || 0), 0);
-    const requestingQtyTotal = requestingPairs.reduce(
-      (sum, { card }) => sum + (Number(card.quantity) || 0),
-      0
-    );
+    const {
+      savedPairs,
+      requestingPairs,
+      savedTotal,
+      requestingTotal,
+      requestingTotalValue,
+      savedQtyTotal,
+      requestingQtyTotal
+    } = useMemo(() => buildMyCardsTableModel(uploadedCards, cardSortMode), [uploadedCards, cardSortMode]);
 
     return (
       <div className="page">
