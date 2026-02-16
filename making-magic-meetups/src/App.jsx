@@ -1362,48 +1362,51 @@ export default function App() {
 
   const headerLogin = (
     <div className="topbar-right">
-      <form className="top-login-form" onSubmit={handleUserLogin}>
-        <label htmlFor="top-login-identifier" className="sr-only">
-          Username or Email
-        </label>
-        <input
-          id="top-login-identifier"
-          type="text"
-          placeholder="username or email"
-          value={loginIdentifier}
-          onChange={(event) => setLoginIdentifier(event.target.value)}
-          required
-        />
-        <label htmlFor="top-login-password" className="sr-only">
-          Password
-        </label>
-        <input
-          id="top-login-password"
-          type="password"
-          placeholder="password"
-          value={loginPassword}
-          onChange={(event) => setLoginPassword(event.target.value)}
-          required
-        />
-        <button type="submit" disabled={isLoginSubmitting}>
-          {isLoginSubmitting ? 'Signing in...' : 'Login'}
-        </button>
-      </form>
-      {loginFeedback ? <p className="top-login-feedback">{loginFeedback}</p> : null}
       {loggedInUser ? (
         <p className="top-login-feedback">
-          Signed in as {loggedInUser.username} ({loggedInUser.role})
+          Signed in as {loggedInUser.username}
         </p>
+      ) : (
+        <>
+          <form className="top-login-form" onSubmit={handleUserLogin}>
+            <label htmlFor="top-login-identifier" className="sr-only">
+              Username or Email
+            </label>
+            <input
+              id="top-login-identifier"
+              type="text"
+              placeholder="username or email"
+              value={loginIdentifier}
+              onChange={(event) => setLoginIdentifier(event.target.value)}
+              required
+            />
+            <label htmlFor="top-login-password" className="sr-only">
+              Password
+            </label>
+            <input
+              id="top-login-password"
+              type="password"
+              placeholder="password"
+              value={loginPassword}
+              onChange={(event) => setLoginPassword(event.target.value)}
+              required
+            />
+            <button type="submit" disabled={isLoginSubmitting}>
+              {isLoginSubmitting ? 'Signing in...' : 'Login'}
+            </button>
+          </form>
+          {loginFeedback ? <p className="top-login-feedback">{loginFeedback}</p> : null}
+        </>
+      )}
+      {loggedInUser ? (
+        <button type="button" onClick={handleLogout}>
+          Logoff
+        </button>
       ) : null}
       {loggedInUser?.role === 'admin' && adminAccountCount !== null ? (
         <p className="top-login-feedback">
           Admin access: {adminAccountCount} accounts in database.
         </p>
-      ) : null}
-      {loggedInUser ? (
-        <button type="button" onClick={handleLogout}>
-          Logout
-        </button>
       ) : null}
     </div>
   );
