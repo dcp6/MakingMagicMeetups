@@ -1918,6 +1918,40 @@ export default function App() {
   }
 
   if (route === 'my-cards') {
+    const sortedPairs = getSortedCardsWithIndex(uploadedCards, cardSortMode);
+    const askingPairs = sortedPairs.filter(
+      ({ card }) => card.askingPriceCents !== null && card.askingPriceCents !== undefined
+    );
+    const savedPairs = sortedPairs.filter(
+      ({ card }) => card.askingPriceCents === null || card.askingPriceCents === undefined
+    );
+
+    function totalsForPairs(pairs) {
+      return pairs.reduce(
+        (acc, { card }) => {
+          const lineTotal =
+            card.lineTotalUsd === null || card.lineTotalUsd === undefined
+              ? null
+              : Number(card.lineTotalUsd);
+          if (lineTotal !== null && Number.isFinite(lineTotal)) {
+            acc.cost += lineTotal;
+          }
+          const askingLine =
+            card.askingLineTotalUsd === null || card.askingLineTotalUsd === undefined
+              ? null
+              : Number(card.askingLineTotalUsd);
+          if (askingLine !== null && Number.isFinite(askingLine)) {
+            acc.asking += askingLine;
+          }
+          return acc;
+        },
+        { cost: 0, asking: 0 }
+      );
+    }
+
+    const savedTotals = totalsForPairs(savedPairs);
+    const askingTotals = totalsForPairs(askingPairs);
+
     return (
       <div className="page">
         <header className="topbar">
@@ -1970,6 +2004,13 @@ export default function App() {
                 {uploadedCards.length > 0 ? (
                   <div className="card-upload-results">
                     <h2>Saved Cards</h2>
+                    <p className="notice subtle">
+                      Saved: {savedPairs.length} {savedPairs.length === 1 ? 'card' : 'cards'} · Asking:{' '}
+                      {askingPairs.length} {askingPairs.length === 1 ? 'card' : 'cards'}
+                    </p>
+                    {savedPairs.length === 0 ? (
+                      <p className="notice subtle">No cards in your Saved list right now.</p>
+                    ) : (
                     <table className="price-table">
                       <thead>
                         <tr>
@@ -1986,7 +2027,7 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {getSortedCardsWithIndex(uploadedCards, cardSortMode).map(
+                        {savedPairs.map(
                           ({ card, index }) => (
                             <tr key={`${card.scryfallId || card.inputName || card.resolvedName}-${index}`}>
                             <td>
@@ -2106,15 +2147,39 @@ export default function App() {
                                 : 'N/A'}
                             </td>
                             <td>
-                              {card.tcgUrl ? (
-                                <a href={card.tcgUrl} target="_blank" rel="noreferrer">
-                                  TCGPlayer
-                                </a>
-                              ) : card.error ? (
-                                card.error
-                              ) : (
-                                'No link'
-                              )}
+                              <div className="row-actions">
+                                {card.tcgUrl ? (
+                                  <a href={card.tcgUrl} target="_blank" rel="noreferrer">
+                                    TCGPlayer
+                                  </a>
+                                ) : card.error ? (
+                                  <span>{card.error}</span>
+                                ) : (
+                                  <span>No link</span>
+                                )}
+                                <button
+                                  type="button"
+                                  className="row-button danger"
+                                  onClick={() => handleDeleteSavedCard(card)}
+                                  disabled={
+                                    isCardPriceLoading ||
+                                    isCardsSaving ||
+                                    deletingCardKey ===
+                                      String(
+                                        card.scryfallId ||
+                                          String(card.resolvedName || card.inputName || '').trim()
+                                      )
+                                  }
+                                >
+                                  {deletingCardKey ===
+                                  String(
+                                    card.scryfallId ||
+                                      String(card.resolvedName || card.inputName || '').trim()
+                                  )
+                                    ? 'Deleting...'
+                                    : 'Delete'}
+                                </button>
+                              </div>
                             </td>
                           </tr>
                           )
@@ -2123,13 +2188,206 @@ export default function App() {
                       <tfoot>
                         <tr>
                           <th colSpan={5}>Total</th>
-                          <th>${cardCostTotal.toFixed(2)}</th>
+                          <th>${savedTotals.cost.toFixed(2)}</th>
                           <th />
-                          <th>${cardAskingTotal.toFixed(2)}</th>
+                          <th>${savedTotals.asking.toFixed(2)}</th>
                           <th />
                         </tr>
                       </tfoot>
                     </table>
+                    )}
+
+                    <h2>Asking For</h2>
+                    {askingPairs.length === 0 ? (
+                      <p className="notice subtle">No cards have an asking price yet.</p>
+                    ) : (
+                      <table className="price-table">
+                        <thead>
+                          <tr>
+                            <th>Pic</th>
+                            <th>Card</th>
+                            <th>Version</th>
+                            <th>Qty</th>
+                            <th>TCGPlayer Low</th>
+                            <th>Line Total</th>
+                            <th>Asking For</th>
+                            <th>Ask Qty</th>
+                            <th>Asking Total</th>
+                            <th>Links / Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {askingPairs.map(({ card, index }) => (
+                            <tr
+                              key={`${card.scryfallId || card.inputName || card.resolvedName}-asking-${index}`}
+                            >
+                              <td>
+                                {card.imageSmall ? (
+                                  <div className="thumb-wrap">
+                                    <img
+                                      className="card-thumb"
+                                      src={card.imageSmall}
+                                      alt={card.resolvedName}
+                                      loading="lazy"
+                                    />
+                                    {card.imageNormal || card.imageSmall ? (
+                                      <img
+                                        className="card-thumb-preview front"
+                                        src={card.imageNormal || card.imageSmall}
+                                        alt=""
+                                        loading="lazy"
+                                      />
+                                    ) : null}
+                                    {card.imageNormalBack || card.imageSmallBack ? (
+                                      <img
+                                        className="card-thumb-preview back"
+                                        src={card.imageNormalBack || card.imageSmallBack}
+                                        alt=""
+                                        loading="lazy"
+                                      />
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                              </td>
+                              <td>{card.resolvedName}</td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="version-button"
+                                  onClick={() =>
+                                    loadVersionOptionsFor(
+                                      card.scryfallId || card.resolvedName || card.inputName,
+                                      card.resolvedName || card.inputName
+                                    )
+                                  }
+                                >
+                                  {card.setCode && card.collectorNumber
+                                    ? `${card.setCode.toUpperCase()} #${card.collectorNumber}`
+                                    : 'Choose'}
+                                </button>
+                                {versionLoadingKey ===
+                                (card.scryfallId || card.resolvedName || card.inputName) ? (
+                                  <div className="version-picker">Loading...</div>
+                                ) : null}
+                                {versionOptionsByKey[
+                                  card.scryfallId || card.resolvedName || card.inputName
+                                ]?.length ? (
+                                  <div className="version-picker">
+                                    <select
+                                      value={card.scryfallId || ''}
+                                      onChange={(event) =>
+                                        handleVersionChange(index, event.target.value)
+                                      }
+                                    >
+                                      {versionOptionsByKey[
+                                        card.scryfallId || card.resolvedName || card.inputName
+                                      ].map((option) => (
+                                        <option key={option.id} value={option.id}>
+                                          {option.set.toUpperCase()} #{option.collectorNumber} ·{' '}
+                                          {option.setName} · {option.releasedAt}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                ) : null}
+                              </td>
+                              <td>
+                                <input
+                                  className="qty-input"
+                                  type="number"
+                                  min={1}
+                                  step={1}
+                                  value={card.quantity}
+                                  onChange={(event) =>
+                                    handleQuantityChange(index, event.target.value)
+                                  }
+                                />
+                              </td>
+                              <td>{card.tcgLow}</td>
+                              <td>
+                                {card.lineTotalUsd !== null
+                                  ? `$${card.lineTotalUsd.toFixed(2)}`
+                                  : 'N/A'}
+                              </td>
+                              <td>
+                                <input
+                                  className="ask-input"
+                                  type="text"
+                                  inputMode="decimal"
+                                  placeholder="0.00"
+                                  value={card.askingInput ?? formatCents(card.askingPriceCents)}
+                                  onChange={(event) =>
+                                    handleAskingPriceChange(index, event.target.value)
+                                  }
+                                  onBlur={() => handleAskingPriceBlur(index)}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  className="qty-input"
+                                  type="number"
+                                  min={1}
+                                  step={1}
+                                  value={card.askingQuantity ?? card.quantity}
+                                  onChange={(event) =>
+                                    handleAskingQuantityChange(index, event.target.value)
+                                  }
+                                />
+                              </td>
+                              <td>
+                                {card.askingLineTotalUsd !== null
+                                  ? `$${card.askingLineTotalUsd.toFixed(2)}`
+                                  : 'N/A'}
+                              </td>
+                              <td>
+                                <div className="row-actions">
+                                  {card.tcgUrl ? (
+                                    <a href={card.tcgUrl} target="_blank" rel="noreferrer">
+                                      TCGPlayer
+                                    </a>
+                                  ) : card.error ? (
+                                    <span>{card.error}</span>
+                                  ) : (
+                                    <span>No link</span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    className="row-button danger"
+                                    onClick={() => handleDeleteSavedCard(card)}
+                                    disabled={
+                                      isCardPriceLoading ||
+                                      isCardsSaving ||
+                                      deletingCardKey ===
+                                        String(
+                                          card.scryfallId ||
+                                            String(card.resolvedName || card.inputName || '').trim()
+                                        )
+                                    }
+                                  >
+                                    {deletingCardKey ===
+                                    String(
+                                      card.scryfallId ||
+                                        String(card.resolvedName || card.inputName || '').trim()
+                                    )
+                                      ? 'Deleting...'
+                                      : 'Delete'}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr>
+                            <th colSpan={5}>Total</th>
+                            <th>${askingTotals.cost.toFixed(2)}</th>
+                            <th />
+                            <th>${askingTotals.asking.toFixed(2)}</th>
+                            <th />
+                          </tr>
+                        </tfoot>
+                      </table>
+                    )}
                   </div>
                 ) : (
                   <p>No saved cards yet.</p>
