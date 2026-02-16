@@ -88,8 +88,17 @@ const pgPool =
       ? new Pool({
           connectionString: process.env.POSTGRES_URL,
           ssl: parsePgSsl()
-        })
+      })
       : null;
+
+function assertRuntimeConfigOrExit() {
+  if (dbBackendEnv === 'postgres' && !isPostgresEnabled) {
+    console.error(
+      'Startup failed: DB_BACKEND=postgres is set but DATABASE_URL/POSTGRES_URL is missing.'
+    );
+    process.exit(1);
+  }
+}
 
 fs.mkdirSync(dbDir, { recursive: true });
 
@@ -1200,6 +1209,42 @@ async function listUsersRuntime() {
   return rows;
 }
 
+async function validatePostgresRuntimeOrExit() {
+  if (!usePostgresRuntime) {
+    return;
+  }
+  if (!pgPool) {
+    console.error(
+      'Startup failed: DB_BACKEND=postgres requires a valid DATABASE_URL/POSTGRES_URL.'
+    );
+    process.exit(1);
+  }
+
+  try {
+    await pgQuery('SELECT 1');
+    const schemaCheck = await pgQuery(
+      `
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name IN ('accounts', 'my_cards', 'password_reset_tokens')
+      `
+    );
+    const found = new Set(schemaCheck.rows.map((row) => row.table_name));
+    const required = ['accounts', 'my_cards', 'password_reset_tokens'];
+    const missing = required.filter((tableName) => !found.has(tableName));
+    if (missing.length > 0) {
+      console.error(
+        `Startup failed: Postgres schema is incomplete (missing: ${missing.join(', ')}). Run npm run db:init:postgres.`
+      );
+      process.exit(1);
+    }
+  } catch (error) {
+    console.error(`Startup failed: could not connect to Postgres (${error.message || error}).`);
+    process.exit(1);
+  }
+}
+
 async function findAccountPasswordHashByIdRuntime(accountId) {
   if (!usePostgresRuntime) {
     return findAccountPasswordHashById.get(accountId);
@@ -1599,6 +1644,8 @@ function loadMapKitPrivateKey() {
 
   return '';
 }
+
+assertRuntimeConfigOrExit();
 
 const app = express();
 app.set('trust proxy', 1);
@@ -2469,6 +2516,8 @@ app.get('/api/admin/password-reset-events', async (req, res) => {
 
   return res.json({ events });
 });
+
+await validatePostgresRuntimeOrExit();
 
 app.listen(port, () => {
   console.log(`User API listening on http://localhost:${port}`);
