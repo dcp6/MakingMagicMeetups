@@ -64,11 +64,9 @@ export default function App() {
   const [cardInputText, setCardInputText] = useState('');
   const [uploadedCards, setUploadedCards] = useState([]);
   const [cardCostTotal, setCardCostTotal] = useState(0);
-  const [cardAskingTotal, setCardAskingTotal] = useState(0);
   const [cardUploadFeedback, setCardUploadFeedback] = useState('');
   const [isCardPriceLoading, setIsCardPriceLoading] = useState(false);
   const [isCardsSaving, setIsCardsSaving] = useState(false);
-  const [isAskingUpdating, setIsAskingUpdating] = useState(false);
   const [deletingCardKey, setDeletingCardKey] = useState(null);
   const [versionOptionsByKey, setVersionOptionsByKey] = useState({});
   const [versionLoadingKey, setVersionLoadingKey] = useState(null);
@@ -824,15 +822,6 @@ export default function App() {
     }, 0);
   }
 
-  function recomputeAskingTotal(pricedEntries) {
-    return pricedEntries.reduce((sum, entry) => {
-      if (entry.askingLineTotalUsd === null) {
-        return sum;
-      }
-      return sum + entry.askingLineTotalUsd;
-    }, 0);
-  }
-
   function getSortedCardsWithIndex(cards, mode) {
     const pairs = cards.map((card, index) => ({ card, index }));
     if (mode === 'alpha') {
@@ -871,7 +860,7 @@ export default function App() {
     return pairs;
   }
 
-  function buildCardEntriesForSave(cards, { useDraftAsking = false } = {}) {
+  function buildCardEntriesForSave(cards) {
     return cards
       .map((card) => {
         const cardName = String(card.resolvedName || card.inputName || '').trim();
@@ -879,24 +868,10 @@ export default function App() {
           return null;
         }
 
-        const askingPriceCentsRaw = useDraftAsking
-          ? card.askingDraftPriceCents ?? card.askingPriceCents
-          : card.askingPriceCents;
-        const askingPriceCents =
-          askingPriceCentsRaw === null || askingPriceCentsRaw === undefined
-            ? null
-            : Number(askingPriceCentsRaw);
-
-        const askingQuantityRaw = useDraftAsking
-          ? card.askingDraftQuantity ?? card.askingQuantity ?? card.quantity
-          : card.askingQuantity ?? card.quantity;
-        const askingQuantity = Number(askingQuantityRaw) || Number(card.quantity) || 1;
-
         return {
           cardName,
           quantity: Number(card.quantity) || 1,
-          askingQuantity,
-          askingPriceCents,
+          requesting: Boolean(card.requesting),
           scryfallId: card.scryfallId || null,
           setCode: card.setCode || null,
           setName: card.setName || null,
@@ -914,13 +889,7 @@ export default function App() {
     const pricedUnique = await Promise.all(entries.map((entry) => fetchCardFromScryfall(entry)));
     const pricedEntries = pricedUnique.map((priced, index) => {
       const quantity = entries[index]?.quantity ?? 1;
-      const askingQuantityRaw = entries[index]?.askingQuantity ?? quantity;
-      const askingQuantity =
-        Number.isFinite(Number(askingQuantityRaw)) && Number(askingQuantityRaw) > 0
-          ? Math.max(1, Math.min(quantity, Math.floor(Number(askingQuantityRaw))))
-          : quantity;
       const unitUsd = parseUsdPrice(priced.tcgLow);
-      const askingPriceCents = entries[index]?.askingPriceCents ?? null;
       const scryfallId = priced.scryfallId ?? entries[index]?.scryfallId ?? null;
       const setCode = priced.setCode ?? entries[index]?.setCode ?? null;
       const setName = priced.setName ?? entries[index]?.setName ?? null;
@@ -929,20 +898,14 @@ export default function App() {
       const imageNormal = priced.imageNormal ?? entries[index]?.imageNormal ?? null;
       const imageSmallBack = priced.imageSmallBack ?? entries[index]?.imageSmallBack ?? null;
       const imageNormalBack = priced.imageNormalBack ?? entries[index]?.imageNormalBack ?? null;
-      // Asking For is a per-card unit price ($/card) and scales by quantity.
-      const askingUnitUsd =
-        askingPriceCents === null || askingPriceCents === undefined
-          ? null
-          : Number(askingPriceCents) / 100;
+      const requesting = Boolean(entries[index]?.requesting);
+
       return {
         ...priced,
         quantity,
-        askingQuantity,
+        requesting,
         unitUsd,
         lineTotalUsd: unitUsd !== null ? unitUsd * quantity : null,
-        askingPriceCents,
-        askingInput: formatCents(askingPriceCents),
-        askingLineTotalUsd: askingUnitUsd !== null ? askingUnitUsd * askingQuantity : null,
         scryfallId,
         setCode,
         setName,
@@ -956,7 +919,6 @@ export default function App() {
 
     setUploadedCards(pricedEntries);
     setCardCostTotal(recomputeCostTotal(pricedEntries));
-    setCardAskingTotal(recomputeAskingTotal(pricedEntries));
   }
 
   async function loadAdminAccountsFromApi(authHeader) {
@@ -1003,14 +965,7 @@ export default function App() {
         ? entries.map((entry) => ({
             cardName: String(entry.cardName || entry.card_name || '').trim(),
             quantity: Number(entry.quantity) || 1,
-            askingQuantity:
-              entry.askingQuantity === null || entry.askingQuantity === undefined
-                ? null
-                : Number(entry.askingQuantity),
-            askingPriceCents:
-              entry.askingPriceCents === null || entry.askingPriceCents === undefined
-                ? null
-                : Number(entry.askingPriceCents),
+            requesting: Boolean(entry.requesting),
             scryfallId: entry.scryfallId || null,
             setCode: entry.setCode || null,
             setName: entry.setName || null,
@@ -1068,34 +1023,9 @@ export default function App() {
           return card;
         }
         const lineTotalUsd = card.unitUsd !== null ? card.unitUsd * quantity : null;
-        const baseAskQty = card.askingQuantity ?? quantity;
-        const askingQuantity = Math.min(baseAskQty, quantity);
-        const draftAskQty =
-          card.askingDraftQuantity === null || card.askingDraftQuantity === undefined
-            ? null
-            : Math.min(Number(card.askingDraftQuantity) || 1, quantity);
-        const effectiveAskQty = draftAskQty ?? askingQuantity;
-        const effectiveAskCents =
-          card.askingDraftPriceCents === null || card.askingDraftPriceCents === undefined
-            ? card.askingPriceCents
-            : card.askingDraftPriceCents;
-        const askingUnitUsd =
-          effectiveAskCents === null || effectiveAskCents === undefined
-            ? null
-            : Number(effectiveAskCents) / 100;
-        const askingLineTotalUsd =
-          askingUnitUsd !== null ? askingUnitUsd * effectiveAskQty : null;
-        return {
-          ...card,
-          quantity,
-          askingQuantity,
-          askingDraftQuantity: draftAskQty,
-          lineTotalUsd,
-          askingLineTotalUsd
-        };
+        return { ...card, quantity, lineTotalUsd };
       });
       setCardCostTotal(recomputeCostTotal(next));
-      setCardAskingTotal(recomputeAskingTotal(next));
 
       // Keep the textarea aligned with the current quantities.
       const nextText = next.map((card) => `${card.quantity} ${card.resolvedName || card.inputName}`).join('\n');
@@ -1104,139 +1034,10 @@ export default function App() {
     });
   }
 
-  function handleDraftAskingPriceChange(index, nextValue) {
-    const askingPriceCents = parseDollarsToCents(nextValue);
-
-    setUploadedCards((previous) => {
-      const next = previous.map((card, i) => {
-        if (i !== index) {
-          return card;
-        }
-
-        const askingUnitUsd =
-          askingPriceCents === null ? null : Number(askingPriceCents) / 100;
-        const effectiveAskQty =
-          card.askingDraftQuantity ?? card.askingQuantity ?? card.quantity;
-        const askingLineTotalUsd =
-          askingUnitUsd !== null ? askingUnitUsd * Number(effectiveAskQty || 1) : null;
-
-        return {
-          ...card,
-          askingDraftInput: nextValue,
-          askingDraftPriceCents: askingPriceCents,
-          askingLineTotalUsd
-        };
-      });
-      setCardAskingTotal(recomputeAskingTotal(next));
-      return next;
-    });
-  }
-
-  function handleDraftAskingQuantityChange(index, nextValue) {
-    const raw = Number(nextValue);
-
-    setUploadedCards((previous) => {
-      const next = previous.map((card, i) => {
-        if (i !== index) {
-          return card;
-        }
-        const askingQuantity = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1;
-        const clamped = Math.max(1, Math.min(card.quantity, askingQuantity));
-
-        const effectiveAskCents =
-          card.askingDraftPriceCents === null || card.askingDraftPriceCents === undefined
-            ? card.askingPriceCents
-            : card.askingDraftPriceCents;
-        const askingUnitUsd =
-          effectiveAskCents === null || effectiveAskCents === undefined
-            ? null
-            : Number(effectiveAskCents) / 100;
-        const askingLineTotalUsd = askingUnitUsd !== null ? askingUnitUsd * clamped : null;
-        return { ...card, askingDraftQuantity: clamped, askingLineTotalUsd };
-      });
-      setCardAskingTotal(recomputeAskingTotal(next));
-      return next;
-    });
-  }
-
-  function handleDraftAskingPriceBlur(index) {
-    setUploadedCards((previous) => {
-      const next = previous.map((card, i) => {
-        if (i !== index) {
-          return card;
-        }
-        const cents =
-          card.askingDraftPriceCents === null || card.askingDraftPriceCents === undefined
-            ? card.askingPriceCents
-            : card.askingDraftPriceCents;
-        return {
-          ...card,
-          askingDraftInput: formatCents(cents)
-        };
-      });
-      return next;
-    });
-  }
-
-  function handleAskingPriceChange(index, nextValue) {
-    const askingPriceCents = parseDollarsToCents(nextValue);
-
-    setUploadedCards((previous) => {
-      const next = previous.map((card, i) => {
-        if (i !== index) {
-          return card;
-        }
-        const askingUnitUsd =
-          askingPriceCents === null ? null : Number(askingPriceCents) / 100;
-        const askingLineTotalUsd =
-          askingUnitUsd !== null ? askingUnitUsd * (card.askingQuantity ?? card.quantity) : null;
-        return {
-          ...card,
-          askingInput: nextValue,
-          askingPriceCents,
-          askingLineTotalUsd
-        };
-      });
-      setCardAskingTotal(recomputeAskingTotal(next));
-      return next;
-    });
-  }
-
-  function handleAskingQuantityChange(index, nextValue) {
-    const raw = Number(nextValue);
-
-    setUploadedCards((previous) => {
-      const next = previous.map((card, i) => {
-        if (i !== index) {
-          return card;
-        }
-        const askingQuantity = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1;
-        const clamped = Math.max(1, Math.min(card.quantity, askingQuantity));
-        const askingUnitUsd =
-          card.askingPriceCents === null || card.askingPriceCents === undefined
-            ? null
-            : Number(card.askingPriceCents) / 100;
-        const askingLineTotalUsd = askingUnitUsd !== null ? askingUnitUsd * clamped : null;
-        return { ...card, askingQuantity: clamped, askingLineTotalUsd };
-      });
-      setCardAskingTotal(recomputeAskingTotal(next));
-      return next;
-    });
-  }
-
-  function handleAskingPriceBlur(index) {
-    setUploadedCards((previous) => {
-      const next = previous.map((card, i) => {
-        if (i !== index) {
-          return card;
-        }
-        return {
-          ...card,
-          askingInput: formatCents(card.askingPriceCents)
-        };
-      });
-      return next;
-    });
+  function handleRequestingToggle(index, nextChecked) {
+    setUploadedCards((previous) =>
+      previous.map((card, i) => (i === index ? { ...card, requesting: Boolean(nextChecked) } : card))
+    );
   }
 
   async function loadVersionOptionsFor(cardKey, cardName) {
@@ -1354,7 +1155,7 @@ export default function App() {
       return;
     }
 
-    const entries = buildCardEntriesForSave(uploadedCards, { useDraftAsking: false });
+    const entries = buildCardEntriesForSave(uploadedCards);
 
     if (entries.length === 0) {
       setCardUploadFeedback('No cards to save.');
@@ -1482,7 +1283,6 @@ export default function App() {
           return entryName.toLowerCase() !== cardName.toLowerCase();
         });
         setCardCostTotal(recomputeCostTotal(next));
-        setCardAskingTotal(recomputeAskingTotal(next));
         return next;
       });
 
@@ -1491,89 +1291,6 @@ export default function App() {
       setCardUploadFeedback('Could not delete saved card right now.');
     } finally {
       setDeletingCardKey(null);
-    }
-  }
-
-  async function handleUpdateAskingFor() {
-    if (!loggedInUser || loggedInUser.role !== 'user') {
-      setCardUploadFeedback('Log in with a user account to update asking prices.');
-      return;
-    }
-    if (!loginAuthHeader) {
-      setCardUploadFeedback('Please log in again.');
-      return;
-    }
-    if (isAskingUpdating || isCardsSaving) {
-      return;
-    }
-
-    const hasDraft = uploadedCards.some(
-      (card) =>
-        card.askingDraftPriceCents !== undefined ||
-        card.askingDraftQuantity !== undefined ||
-        card.askingDraftInput !== undefined
-    );
-    if (!hasDraft) {
-      setCardUploadFeedback('No asking price changes to update.');
-      return;
-    }
-
-    const entries = buildCardEntriesForSave(uploadedCards, { useDraftAsking: true });
-    if (entries.length === 0) {
-      setCardUploadFeedback('No cards to update.');
-      return;
-    }
-
-    setIsAskingUpdating(true);
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/cards`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: loginAuthHeader
-        },
-        body: JSON.stringify({ cards: entries, mode: 'replace' })
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        setCardUploadFeedback(payload.error || 'Could not update asking prices.');
-        return;
-      }
-
-      setUploadedCards((previous) => {
-        const next = previous.map((card) => {
-          const nextAskingPriceCents =
-            card.askingDraftPriceCents === undefined ? card.askingPriceCents : card.askingDraftPriceCents;
-          const nextAskingQuantity =
-            card.askingDraftQuantity === undefined ? card.askingQuantity : card.askingDraftQuantity;
-          const askingUnitUsd =
-            nextAskingPriceCents === null || nextAskingPriceCents === undefined
-              ? null
-              : Number(nextAskingPriceCents) / 100;
-          const effectiveAskQty = nextAskingQuantity ?? card.quantity;
-          const askingLineTotalUsd =
-            askingUnitUsd !== null ? askingUnitUsd * Number(effectiveAskQty || 1) : null;
-
-          return {
-            ...card,
-            askingPriceCents: nextAskingPriceCents,
-            askingQuantity: nextAskingQuantity,
-            askingInput: formatCents(nextAskingPriceCents),
-            askingLineTotalUsd,
-            askingDraftInput: undefined,
-            askingDraftPriceCents: undefined,
-            askingDraftQuantity: undefined
-          };
-        });
-        setCardAskingTotal(recomputeAskingTotal(next));
-        return next;
-      });
-
-      setCardUploadFeedback('Asking prices updated.');
-    } catch (_error) {
-      setCardUploadFeedback('Could not update asking prices right now.');
-    } finally {
-      setIsAskingUpdating(false);
     }
   }
 
@@ -1929,9 +1646,7 @@ export default function App() {
                           <th>Qty</th>
                           <th>TCGPlayer Low</th>
                           <th>Line Total</th>
-                          <th>Asking For</th>
-                          <th>Ask Qty</th>
-                          <th>Asking Total</th>
+                          <th>Requesting</th>
                           <th>Links / Status</th>
                         </tr>
                       </thead>
@@ -2027,66 +1742,22 @@ export default function App() {
                             </td>
                             <td>
                               <input
-                                className="ask-input"
-                                type="text"
-                                inputMode="decimal"
-                                placeholder="0.00"
-                                value={card.askingInput ?? formatCents(card.askingPriceCents)}
-                                onChange={(event) => handleAskingPriceChange(index, event.target.value)}
-                                onBlur={() => handleAskingPriceBlur(index)}
+                                type="checkbox"
+                                checked={Boolean(card.requesting)}
+                                onChange={(event) => handleRequestingToggle(index, event.target.checked)}
+                                aria-label={`Requesting ${card.resolvedName}`}
                               />
                             </td>
                             <td>
-                              <input
-                                className="qty-input"
-                                type="number"
-                                min={1}
-                                step={1}
-                                value={card.askingQuantity ?? card.quantity}
-                                onChange={(event) =>
-                                  handleAskingQuantityChange(index, event.target.value)
-                                }
-                              />
-                            </td>
-                            <td>
-                              {card.askingLineTotalUsd !== null
-                                ? `$${card.askingLineTotalUsd.toFixed(2)}`
-                                : 'N/A'}
-                            </td>
-                            <td>
-                              <div className="row-actions">
-                                {card.tcgUrl ? (
-                                  <a href={card.tcgUrl} target="_blank" rel="noreferrer">
-                                    TCGPlayer
-                                  </a>
-                                ) : card.error ? (
-                                  <span>{card.error}</span>
-                                ) : (
-                                  <span>No link</span>
-                                )}
-                                <button
-                                  type="button"
-                                  className="row-button danger"
-                                  onClick={() => handleDeleteSavedCard(card)}
-                                  disabled={
-                                    isCardPriceLoading ||
-                                    isCardsSaving ||
-                                    deletingCardKey ===
-                                      String(
-                                        card.scryfallId ||
-                                          String(card.resolvedName || card.inputName || '').trim()
-                                      )
-                                  }
-                                >
-                                  {deletingCardKey ===
-                                  String(
-                                    card.scryfallId ||
-                                      String(card.resolvedName || card.inputName || '').trim()
-                                  )
-                                    ? 'Deleting...'
-                                    : 'Delete'}
-                                </button>
-                              </div>
+                              {card.tcgUrl ? (
+                                <a href={card.tcgUrl} target="_blank" rel="noreferrer">
+                                  TCGPlayer
+                                </a>
+                              ) : card.error ? (
+                                card.error
+                              ) : (
+                                'No link'
+                              )}
                             </td>
                           </tr>
                           )
@@ -2097,7 +1768,6 @@ export default function App() {
                           <th colSpan={5}>Total</th>
                           <th>${cardCostTotal.toFixed(2)}</th>
                           <th />
-                          <th>${cardAskingTotal.toFixed(2)}</th>
                           <th />
                         </tr>
                       </tfoot>
@@ -2115,44 +1785,24 @@ export default function App() {
 
   if (route === 'my-cards') {
     const sortedPairs = getSortedCardsWithIndex(uploadedCards, cardSortMode);
-    const askingPairs = sortedPairs.filter(
-      ({ card }) => card.askingPriceCents !== null && card.askingPriceCents !== undefined
-    );
-    const savedPairs = sortedPairs.filter(
-      ({ card }) => card.askingPriceCents === null || card.askingPriceCents === undefined
-    );
+    const requestingPairs = sortedPairs.filter(({ card }) => Boolean(card.requesting));
+    const savedPairs = sortedPairs.filter(({ card }) => !card.requesting);
 
     function totalsForPairs(pairs) {
-      return pairs.reduce(
-        (acc, { card }) => {
-          const lineTotal =
-            card.lineTotalUsd === null || card.lineTotalUsd === undefined
-              ? null
-              : Number(card.lineTotalUsd);
-          if (lineTotal !== null && Number.isFinite(lineTotal)) {
-            acc.cost += lineTotal;
-          }
-          const askingLine =
-            card.askingLineTotalUsd === null || card.askingLineTotalUsd === undefined
-              ? null
-              : Number(card.askingLineTotalUsd);
-          if (askingLine !== null && Number.isFinite(askingLine)) {
-            acc.asking += askingLine;
-          }
-          return acc;
-        },
-        { cost: 0, asking: 0 }
-      );
+      return pairs.reduce((sum, { card }) => {
+        const lineTotal =
+          card.lineTotalUsd === null || card.lineTotalUsd === undefined
+            ? null
+            : Number(card.lineTotalUsd);
+        if (lineTotal !== null && Number.isFinite(lineTotal)) {
+          return sum + lineTotal;
+        }
+        return sum;
+      }, 0);
     }
 
-    const savedTotals = totalsForPairs(savedPairs);
-    const askingTotals = totalsForPairs(askingPairs);
-    const hasPendingAskingDraft = uploadedCards.some(
-      (card) =>
-        card.askingDraftPriceCents !== undefined ||
-        card.askingDraftQuantity !== undefined ||
-        card.askingDraftInput !== undefined
-    );
+    const savedTotal = totalsForPairs(savedPairs);
+    const requestingTotal = totalsForPairs(requestingPairs);
 
     return (
       <div className="page">
@@ -2207,8 +1857,8 @@ export default function App() {
                   <div className="card-upload-results">
                     <h2>Saved Cards</h2>
                     <p className="notice subtle">
-                      Saved: {savedPairs.length} {savedPairs.length === 1 ? 'card' : 'cards'} · Asking:{' '}
-                      {askingPairs.length} {askingPairs.length === 1 ? 'card' : 'cards'}
+                      Saved: {savedPairs.length} {savedPairs.length === 1 ? 'card' : 'cards'} · Requesting:{' '}
+                      {requestingPairs.length} {requestingPairs.length === 1 ? 'card' : 'cards'}
                     </p>
                     {savedPairs.length === 0 ? (
                       <p className="notice subtle">No cards in your Saved list right now.</p>
@@ -2222,9 +1872,7 @@ export default function App() {
                           <th>Qty</th>
                           <th>TCGPlayer Low</th>
                           <th>Line Total</th>
-                          <th>Asking For</th>
-                          <th>Ask Qty</th>
-                          <th>Asking Total</th>
+                          <th>Requesting</th>
                           <th>Links / Status</th>
                         </tr>
                       </thead>
@@ -2320,37 +1968,13 @@ export default function App() {
                             </td>
                             <td>
                               <input
-                                className="ask-input"
-                                type="text"
-                                inputMode="decimal"
-                                placeholder="0.00"
-                                value={
-                                  card.askingDraftInput ??
-                                  card.askingInput ??
-                                  formatCents(card.askingPriceCents)
-                                }
+                                type="checkbox"
+                                checked={Boolean(card.requesting)}
                                 onChange={(event) =>
-                                  handleDraftAskingPriceChange(index, event.target.value)
+                                  handleRequestingToggle(index, event.target.checked)
                                 }
-                                onBlur={() => handleDraftAskingPriceBlur(index)}
+                                aria-label={`Requesting ${card.resolvedName}`}
                               />
-                            </td>
-                            <td>
-                              <input
-                                className="qty-input"
-                                type="number"
-                                min={1}
-                                step={1}
-                                value={card.askingDraftQuantity ?? card.askingQuantity ?? card.quantity}
-                                onChange={(event) =>
-                                  handleDraftAskingQuantityChange(index, event.target.value)
-                                }
-                              />
-                            </td>
-                            <td>
-                              {card.askingLineTotalUsd !== null
-                                ? `$${card.askingLineTotalUsd.toFixed(2)}`
-                                : 'N/A'}
                             </td>
                             <td>
                               <div className="row-actions">
@@ -2394,18 +2018,17 @@ export default function App() {
                       <tfoot>
                         <tr>
                           <th colSpan={5}>Total</th>
-                          <th>${savedTotals.cost.toFixed(2)}</th>
+                          <th>${savedTotal.toFixed(2)}</th>
                           <th />
-                          <th>${savedTotals.asking.toFixed(2)}</th>
                           <th />
                         </tr>
                       </tfoot>
                     </table>
                     )}
 
-                    <h2>Asking For</h2>
-                    {askingPairs.length === 0 ? (
-                      <p className="notice subtle">No cards have an asking price yet.</p>
+                    <h2>Requesting</h2>
+                    {requestingPairs.length === 0 ? (
+                      <p className="notice subtle">No cards are marked as requesting yet.</p>
                     ) : (
                       <table className="price-table">
                           <thead>
@@ -2416,16 +2039,14 @@ export default function App() {
                               <th>Qty</th>
                               <th>TCGPlayer Low</th>
                               <th>Line Total</th>
-                              <th>Asking For</th>
-                              <th>Ask Qty</th>
-                              <th>Asking Total</th>
+                              <th>Requesting</th>
                               <th>Links / Status</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {askingPairs.map(({ card, index }) => (
+                            {requestingPairs.map(({ card, index }) => (
                               <tr
-                                key={`${card.scryfallId || card.inputName || card.resolvedName}-asking-${index}`}
+                                key={`${card.scryfallId || card.inputName || card.resolvedName}-requesting-${index}`}
                               >
                               <td>
                                 {card.imageSmall ? (
@@ -2517,37 +2138,13 @@ export default function App() {
                               </td>
                               <td>
                                 <input
-                                  className="ask-input"
-                                  type="text"
-                                  inputMode="decimal"
-                                  placeholder="0.00"
-                                  value={
-                                    card.askingDraftInput ??
-                                    card.askingInput ??
-                                    formatCents(card.askingPriceCents)
-                                  }
+                                  type="checkbox"
+                                  checked={Boolean(card.requesting)}
                                   onChange={(event) =>
-                                    handleDraftAskingPriceChange(index, event.target.value)
+                                    handleRequestingToggle(index, event.target.checked)
                                   }
-                                  onBlur={() => handleDraftAskingPriceBlur(index)}
+                                  aria-label={`Requesting ${card.resolvedName}`}
                                 />
-                              </td>
-                              <td>
-                                <input
-                                  className="qty-input"
-                                  type="number"
-                                  min={1}
-                                  step={1}
-                                  value={card.askingDraftQuantity ?? card.askingQuantity ?? card.quantity}
-                                  onChange={(event) =>
-                                    handleDraftAskingQuantityChange(index, event.target.value)
-                                  }
-                                />
-                              </td>
-                              <td>
-                                {card.askingLineTotalUsd !== null
-                                  ? `$${card.askingLineTotalUsd.toFixed(2)}`
-                                  : 'N/A'}
                               </td>
                               <td>
                                 <div className="row-actions">
@@ -2586,40 +2183,17 @@ export default function App() {
                               </td>
                             </tr>
                             ))}
-                          </tbody>
-                          <tfoot>
-                            <tr>
-                              <th colSpan={5}>Total</th>
-                              <th>${askingTotals.cost.toFixed(2)}</th>
-                              <th />
-                              <th>${askingTotals.asking.toFixed(2)}</th>
-                              <th />
-                            </tr>
-                          </tfoot>
+                        </tbody>
+                        <tfoot>
+                          <tr>
+                            <th colSpan={5}>Total</th>
+                            <th>${requestingTotal.toFixed(2)}</th>
+                            <th />
+                            <th />
+                          </tr>
+                        </tfoot>
                       </table>
                     )}
-                    <div className="dashboard-actions">
-                      <button
-                        type="button"
-                        className="action-button primary"
-                        onClick={handleUpdateAskingFor}
-                        disabled={
-                          isCardPriceLoading ||
-                          isCardsSaving ||
-                          isAskingUpdating ||
-                          !hasPendingAskingDraft
-                        }
-                      >
-                        {isAskingUpdating ? 'Updating...' : 'Update Asking For'}
-                      </button>
-                      {!hasPendingAskingDraft ? (
-                        <span className="helper-text">Make changes above, then click Update.</span>
-                      ) : (
-                        <span className="helper-text">
-                          Asking prices are not saved until you click Update.
-                        </span>
-                      )}
-                    </div>
                   </div>
                 ) : (
                   <p>No saved cards yet.</p>

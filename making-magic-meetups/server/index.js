@@ -223,6 +223,7 @@ db.exec(`
     account_id INTEGER NOT NULL,
     card_name TEXT NOT NULL,
     quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+    requesting INTEGER NOT NULL DEFAULT 0,
     asking_quantity INTEGER,
     asking_price_cents INTEGER,
     scryfall_id TEXT,
@@ -241,6 +242,7 @@ db.exec(`
 `);
 
 for (const column of [
+  'requesting INTEGER',
   'asking_quantity INTEGER',
   'asking_price_cents INTEGER',
   'scryfall_id TEXT',
@@ -401,6 +403,7 @@ const upsertMyCardReplace = db.prepare(`
     account_id,
     card_name,
     quantity,
+    requesting,
     asking_quantity,
     asking_price_cents,
     scryfall_id,
@@ -412,9 +415,10 @@ const upsertMyCardReplace = db.prepare(`
     image_small_back,
     image_normal_back
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(account_id, card_name) DO UPDATE SET
     quantity = excluded.quantity,
+    requesting = excluded.requesting,
     asking_quantity = excluded.asking_quantity,
     asking_price_cents = excluded.asking_price_cents,
     scryfall_id = excluded.scryfall_id,
@@ -433,6 +437,7 @@ const upsertMyCardAdd = db.prepare(`
     account_id,
     card_name,
     quantity,
+    requesting,
     asking_quantity,
     asking_price_cents,
     scryfall_id,
@@ -444,9 +449,10 @@ const upsertMyCardAdd = db.prepare(`
     image_small_back,
     image_normal_back
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(account_id, card_name) DO UPDATE SET
     quantity = my_cards.quantity + excluded.quantity,
+    requesting = MAX(my_cards.requesting, excluded.requesting),
     asking_quantity =
       COALESCE(my_cards.asking_quantity, my_cards.quantity) +
       COALESCE(excluded.asking_quantity, excluded.quantity),
@@ -466,6 +472,7 @@ const listMyCards = db.prepare(`
   SELECT
     card_name,
     quantity,
+    requesting,
     asking_quantity,
     asking_price_cents,
     scryfall_id,
@@ -967,6 +974,7 @@ app.get('/api/cards', (req, res) => {
   const entries = listMyCards.all(user.id).map((row) => ({
     cardName: row.card_name,
     quantity: row.quantity,
+    requesting: Boolean(row.requesting),
     askingQuantity:
       row.asking_quantity === null || row.asking_quantity === undefined
         ? null
@@ -1012,6 +1020,7 @@ app.post('/api/cards', (req, res) => {
   for (const submitted of submittedCards) {
     let cardName = '';
     let quantity = 1;
+    let requesting = 0;
     let askingQuantity = null;
     let askingPriceCents = null;
     let scryfallId = null;
@@ -1031,6 +1040,7 @@ app.post('/api/cards', (req, res) => {
       if (!Number.isFinite(quantity) || quantity <= 0) {
         quantity = 1;
       }
+      requesting = submitted.requesting ? 1 : 0;
       if (submitted.askingQuantity !== null && submitted.askingQuantity !== undefined) {
         const rawAskQty = Number(submitted.askingQuantity);
         if (Number.isFinite(rawAskQty) && rawAskQty > 0) {
@@ -1058,6 +1068,7 @@ app.post('/api/cards', (req, res) => {
     const existing = cardMap.get(normalized);
     if (existing) {
       existing.quantity += quantity;
+      existing.requesting = existing.requesting || requesting ? 1 : 0;
       if (askingPriceCents !== null) {
         existing.askingPriceCents = askingPriceCents;
       }
@@ -1076,6 +1087,7 @@ app.post('/api/cards', (req, res) => {
       cardMap.set(normalized, {
         cardName,
         quantity,
+        requesting,
         askingQuantity,
         askingPriceCents,
         scryfallId,
@@ -1112,6 +1124,7 @@ app.post('/api/cards', (req, res) => {
         accountId,
         entry.cardName,
         entry.quantity,
+        entry.requesting ? 1 : 0,
         normalizedAskQty,
         entry.askingPriceCents ?? null,
         entry.scryfallId ?? null,
