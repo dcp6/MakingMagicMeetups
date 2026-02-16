@@ -1901,6 +1901,7 @@ export default function App() {
                 {uploadedCards.length > 0 ? (
                   <div className="card-upload-results">
                     <h2>Saved Cards</h2>
+                    <p className="table-total">Table Total: ${savedTotal.toFixed(2)}</p>
                     <p className="notice subtle">
                       Saved: {savedPairs.length} {savedPairs.length === 1 ? 'card' : 'cards'} · Requesting:{' '}
                       {requestingPairs.length} {requestingPairs.length === 1 ? 'card' : 'cards'}
@@ -2073,6 +2074,7 @@ export default function App() {
                     )}
 
                     <h2>Requesting</h2>
+                    <p className="table-total">Table Total: ${requestingTotal.toFixed(2)}</p>
                     {requestingPairs.length === 0 ? (
                       <p className="notice subtle">No cards are marked as requesting yet.</p>
                     ) : (

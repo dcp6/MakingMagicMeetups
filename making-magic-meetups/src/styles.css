@@ -608,6 +608,12 @@ h1 {
   font-size: 1rem;
 }
 
+.table-total {
+  margin: 0.05rem 0 0.45rem;
+  font-weight: 800;
+  color: var(--text-900);
+}
+
 .card-upload-results {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
