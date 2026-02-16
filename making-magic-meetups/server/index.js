@@ -505,6 +505,75 @@ const deleteMyCardByName = db.prepare(`
   WHERE account_id = ? AND LOWER(card_name) = LOWER(?)
 `);
 
+function sqlIdentityKey(alias) {
+  return `CASE
+    WHEN NULLIF(TRIM(${alias}.scryfall_id), '') IS NOT NULL THEN 'id:' || LOWER(TRIM(${alias}.scryfall_id))
+    ELSE 'name:' || LOWER(TRIM(${alias}.card_name))
+  END`;
+}
+
+const srcIdentityKey = sqlIdentityKey('src');
+const rowIdentityKey = sqlIdentityKey('my_cards');
+
+const consolidateMyCardsIdentityKeepRows = db.prepare(`
+  UPDATE my_cards
+  SET
+    quantity = (
+      SELECT SUM(src.quantity)
+      FROM my_cards src
+      WHERE src.account_id = my_cards.account_id
+        AND ${srcIdentityKey} = ${rowIdentityKey}
+    ),
+    requesting = (
+      SELECT MAX(src.requesting)
+      FROM my_cards src
+      WHERE src.account_id = my_cards.account_id
+        AND ${srcIdentityKey} = ${rowIdentityKey}
+    ),
+    asking_quantity = (
+      SELECT SUM(COALESCE(src.asking_quantity, src.quantity))
+      FROM my_cards src
+      WHERE src.account_id = my_cards.account_id
+        AND ${srcIdentityKey} = ${rowIdentityKey}
+    ),
+    asking_price_cents = COALESCE(
+      (
+        SELECT src.asking_price_cents
+        FROM my_cards src
+        WHERE src.account_id = my_cards.account_id
+          AND ${srcIdentityKey} = ${rowIdentityKey}
+          AND src.asking_price_cents IS NOT NULL
+        ORDER BY src.updated_at DESC, src.id DESC
+        LIMIT 1
+      ),
+      my_cards.asking_price_cents
+    ),
+    updated_at = CURRENT_TIMESTAMP
+  WHERE my_cards.account_id = ?
+    AND my_cards.id = (
+      SELECT MIN(src.id)
+      FROM my_cards src
+      WHERE src.account_id = my_cards.account_id
+        AND ${srcIdentityKey} = ${rowIdentityKey}
+    )
+`);
+
+const consolidateMyCardsIdentityDeleteDuplicates = db.prepare(`
+  DELETE FROM my_cards
+  WHERE account_id = ?
+    AND id NOT IN (
+      SELECT MIN(src.id)
+      FROM my_cards src
+      WHERE src.account_id = ?
+      GROUP BY ${srcIdentityKey}
+    )
+`);
+
+const consolidateMyCardsByIdentity = db.transaction((accountId) => {
+  consolidateMyCardsIdentityKeepRows.run(accountId);
+  consolidateMyCardsIdentityDeleteDuplicates.run(accountId, accountId);
+});
+
 function parseAskingPriceCents(value) {
   if (value === null || value === undefined || value === '') {
     return null;
@@ -1193,8 +1262,8 @@ app.post('/api/cards', (req, res) => {
       continue;
     }
 
-    const normalized = cardName.toLowerCase();
-    const existing = cardMap.get(normalized);
+    const identityKey = scryfallId ? `id:${scryfallId.toLowerCase()}` : `name:${cardName.toLowerCase()}`;
+    const existing = cardMap.get(identityKey);
     if (existing) {
       existing.quantity += quantity;
       existing.requesting = existing.requesting || requesting ? 1 : 0;
@@ -1213,7 +1282,7 @@ app.post('/api/cards', (req, res) => {
         existing.imageNormal = imageNormal;
       }
     } else {
-      cardMap.set(normalized, {
+      cardMap.set(identityKey, {
         cardName,
         quantity,
         requesting,
@@ -1266,6 +1335,7 @@ app.post('/api/cards', (req, res) => {
         entry.imageNormalBack ?? null
       );
     }
+    consolidateMyCardsByIdentity(accountId);
   });
 
   saveCards(user.id, entries);
