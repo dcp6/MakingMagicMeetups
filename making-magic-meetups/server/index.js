@@ -142,6 +142,29 @@ db.exec(`
   ON password_reset_tokens (expires_at)
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS password_reset_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id INTEGER,
+    identifier TEXT,
+    request_ip TEXT,
+    event_type TEXT NOT NULL,
+    detail TEXT,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE SET NULL
+  );
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS password_reset_events_created_at_idx
+  ON password_reset_events (created_at)
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS password_reset_events_account_id_idx
+  ON password_reset_events (account_id)
+`);
+
 const insertUser = db.prepare(`
   INSERT INTO users (email)
   VALUES (?)
@@ -259,6 +282,35 @@ const markPasswordResetTokenUsed = db.prepare(`
 const deleteExpiredPasswordResetTokens = db.prepare(`
   DELETE FROM password_reset_tokens
   WHERE expires_at < ?
+`);
+
+const insertPasswordResetEvent = db.prepare(`
+  INSERT INTO password_reset_events (
+    account_id,
+    identifier,
+    request_ip,
+    event_type,
+    detail,
+    created_at
+  )
+  VALUES (?, ?, ?, ?, ?, ?)
+`);
+
+const listPasswordResetEventsForAdmin = db.prepare(`
+  SELECT
+    e.id,
+    e.account_id,
+    a.username,
+    a.email,
+    e.identifier,
+    e.request_ip,
+    e.event_type,
+    e.detail,
+    e.created_at
+  FROM password_reset_events e
+  LEFT JOIN accounts a ON a.id = e.account_id
+  ORDER BY e.created_at DESC, e.id DESC
+  LIMIT 200
 `);
 
 db.exec(`
@@ -725,6 +777,21 @@ function verifyPassword(password, storedHash) {
 
 function hashResetToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+function logPasswordResetEvent({ accountId = null, identifier = '', requestIp = '', eventType, detail = '' }) {
+  try {
+    insertPasswordResetEvent.run(
+      accountId,
+      identifier || null,
+      requestIp || null,
+      eventType,
+      detail || null,
+      Date.now()
+    );
+  } catch (_error) {
+    // Audit logging should never break auth flows.
+  }
 }
 
 function authenticateLogin(identifier, password) {
@@ -1198,6 +1265,13 @@ app.post('/api/password-reset/request', async (req, res) => {
   }
 
   if (!resendApiKey || !resetEmailFrom) {
+    logPasswordResetEvent({
+      accountId: null,
+      identifier: String(req.body?.identifier || '').trim(),
+      requestIp: getRequestIp(req),
+      eventType: 'email_config_missing',
+      detail: 'RESEND_API_KEY or RESET_EMAIL_FROM not configured'
+    });
     return res.status(503).json({
       error: 'Password reset email is not configured. Set RESEND_API_KEY and RESET_EMAIL_FROM.'
     });
@@ -1206,6 +1280,13 @@ app.post('/api/password-reset/request', async (req, res) => {
   const identifier = String(req.body?.identifier || '').trim();
   if (!identifier) {
     recordPasswordResetAttempt(throttleKey, false);
+    logPasswordResetEvent({
+      accountId: null,
+      identifier,
+      requestIp: getRequestIp(req),
+      eventType: 'request_invalid',
+      detail: 'Missing identifier'
+    });
     return res.status(400).json({ error: 'Please provide your username or email.' });
   }
 
@@ -1217,6 +1298,13 @@ app.post('/api/password-reset/request', async (req, res) => {
   try {
     const account = findAccountForPasswordReset.get(identifier, identifier);
     if (!account) {
+      logPasswordResetEvent({
+        accountId: null,
+        identifier,
+        requestIp: getRequestIp(req),
+        eventType: 'request_no_account',
+        detail: 'No account matched identifier'
+      });
       recordPasswordResetAttempt(throttleKey, true);
       return res.json(genericResponse);
     }
@@ -1233,6 +1321,13 @@ app.post('/api/password-reset/request', async (req, res) => {
       insertPasswordResetToken.run(account.id, tokenHash, getRequestIp(req), expiresAt, now);
     });
     tx();
+    logPasswordResetEvent({
+      accountId: account.id,
+      identifier,
+      requestIp: getRequestIp(req),
+      eventType: 'token_requested',
+      detail: 'Reset token created'
+    });
 
     const resetUrl = buildPasswordResetUrl(rawToken);
     try {
@@ -1241,8 +1336,22 @@ app.post('/api/password-reset/request', async (req, res) => {
         username: account.username,
         resetUrl
       });
+      logPasswordResetEvent({
+        accountId: account.id,
+        identifier,
+        requestIp: getRequestIp(req),
+        eventType: 'email_sent',
+        detail: 'Reset email sent successfully'
+      });
     } catch (emailError) {
       console.error('Password reset email delivery failed:', emailError);
+      logPasswordResetEvent({
+        accountId: account.id,
+        identifier,
+        requestIp: getRequestIp(req),
+        eventType: 'email_failed',
+        detail: String(emailError?.message || 'Email delivery failed')
+      });
       recordPasswordResetAttempt(throttleKey, false);
       return res.status(502).json({ error: 'Could not send password reset email.' });
     }
@@ -1250,6 +1359,13 @@ app.post('/api/password-reset/request', async (req, res) => {
     recordPasswordResetAttempt(throttleKey, true);
     return res.json(genericResponse);
   } catch (_error) {
+    logPasswordResetEvent({
+      accountId: null,
+      identifier,
+      requestIp: getRequestIp(req),
+      eventType: 'request_error',
+      detail: 'Unhandled error during request flow'
+    });
     recordPasswordResetAttempt(throttleKey, false);
     return res.status(500).json({ error: 'Could not start password reset.' });
   }
@@ -1260,9 +1376,23 @@ app.post('/api/password-reset/confirm', (req, res) => {
   const nextPassword = String(req.body?.password || '');
 
   if (!rawToken) {
+    logPasswordResetEvent({
+      accountId: null,
+      identifier: '',
+      requestIp: getRequestIp(req),
+      eventType: 'confirm_invalid',
+      detail: 'Missing reset token'
+    });
     return res.status(400).json({ error: 'Reset token is required.' });
   }
   if (!nextPassword || nextPassword.length < 6) {
+    logPasswordResetEvent({
+      accountId: null,
+      identifier: '',
+      requestIp: getRequestIp(req),
+      eventType: 'confirm_invalid',
+      detail: 'Password below minimum length'
+    });
     return res.status(400).json({ error: 'Password must be at least 6 characters.' });
   }
 
@@ -1271,12 +1401,33 @@ app.post('/api/password-reset/confirm', (req, res) => {
   const tokenHash = hashResetToken(rawToken);
   const resetTokenRow = findPasswordResetTokenByHash.get(tokenHash);
   if (!resetTokenRow) {
+    logPasswordResetEvent({
+      accountId: null,
+      identifier: '',
+      requestIp: getRequestIp(req),
+      eventType: 'token_invalid',
+      detail: 'Token hash not found'
+    });
     return res.status(400).json({ error: 'Invalid or expired reset link.' });
   }
   if (resetTokenRow.used_at !== null && resetTokenRow.used_at !== undefined) {
+    logPasswordResetEvent({
+      accountId: resetTokenRow.account_id,
+      identifier: '',
+      requestIp: getRequestIp(req),
+      eventType: 'token_invalid',
+      detail: 'Token already used'
+    });
     return res.status(400).json({ error: 'Invalid or expired reset link.' });
   }
   if (Number(resetTokenRow.expires_at) <= now) {
+    logPasswordResetEvent({
+      accountId: resetTokenRow.account_id,
+      identifier: '',
+      requestIp: getRequestIp(req),
+      eventType: 'token_invalid',
+      detail: 'Token expired'
+    });
     return res.status(400).json({ error: 'Invalid or expired reset link.' });
   }
 
@@ -1288,8 +1439,22 @@ app.post('/api/password-reset/confirm', (req, res) => {
       markPasswordResetTokensUsedForAccount.run(now, resetTokenRow.account_id);
     });
     tx();
+    logPasswordResetEvent({
+      accountId: resetTokenRow.account_id,
+      identifier: '',
+      requestIp: getRequestIp(req),
+      eventType: 'token_used',
+      detail: 'Password reset completed'
+    });
     return res.json({ ok: true });
   } catch (_error) {
+    logPasswordResetEvent({
+      accountId: resetTokenRow.account_id,
+      identifier: '',
+      requestIp: getRequestIp(req),
+      eventType: 'confirm_error',
+      detail: 'Unhandled error during confirm flow'
+    });
     return res.status(500).json({ error: 'Could not reset password.' });
   }
 });
@@ -1673,6 +1838,32 @@ app.get('/api/admin/accounts', (req, res) => {
   }));
 
   return res.json({ accounts });
+});
+
+app.get('/api/admin/password-reset-events', (req, res) => {
+  const credentials = parseBasicAuth(req);
+  if (!credentials) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
+  const user = authenticateLogin(credentials.identifier, credentials.password);
+  if (!user || user.role !== 'admin') {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
+  const events = listPasswordResetEventsForAdmin.all().map((row) => ({
+    id: row.id,
+    accountId: row.account_id || null,
+    username: row.username || null,
+    email: row.email || null,
+    identifier: row.identifier || null,
+    requestIp: row.request_ip || null,
+    eventType: row.event_type,
+    detail: row.detail || null,
+    createdAt: row.created_at
+  }));
+
+  return res.json({ events });
 });
 
 app.listen(port, () => {

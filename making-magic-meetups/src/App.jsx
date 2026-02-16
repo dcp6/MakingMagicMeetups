@@ -76,6 +76,7 @@ export default function App() {
   const [loginAuthHeader, setLoginAuthHeader] = useState(null);
   const [adminAccountCount, setAdminAccountCount] = useState(null);
   const [adminAccounts, setAdminAccounts] = useState([]);
+  const [adminPasswordResetEvents, setAdminPasswordResetEvents] = useState([]);
   const [cardInputText, setCardInputText] = useState('');
   const [uploadedCards, setUploadedCards] = useState([]);
   const [showingJustSavedCards, setShowingJustSavedCards] = useState(false);
@@ -542,6 +543,8 @@ export default function App() {
         setLoggedInUser(null);
         setLoginAuthHeader(null);
         setAdminAccountCount(null);
+        setAdminAccounts([]);
+        setAdminPasswordResetEvents([]);
         clearStoredSession();
         setLoginFeedback(loginPayload.error || 'Login failed.');
         return;
@@ -564,6 +567,7 @@ export default function App() {
       } else {
         setAdminAccountCount(null);
         setAdminAccounts([]);
+        setAdminPasswordResetEvents([]);
         await loadUserCardsFromApi(authHeader);
       }
     } catch (_error) {
@@ -596,6 +600,7 @@ export default function App() {
             } else {
               setAdminAccountCount(null);
               setAdminAccounts([]);
+              setAdminPasswordResetEvents([]);
               await loadUserCardsFromApi(authHeader);
             }
             return;
@@ -609,6 +614,7 @@ export default function App() {
       setLoginAuthHeader(null);
       setAdminAccountCount(null);
       setAdminAccounts([]);
+      setAdminPasswordResetEvents([]);
       clearStoredSession();
       setLoginFeedback('Could not reach login service.');
     } finally {
@@ -621,6 +627,7 @@ export default function App() {
     setLoginAuthHeader(null);
     setAdminAccountCount(null);
     setAdminAccounts([]);
+    setAdminPasswordResetEvents([]);
     setUploadedCards([]);
     setCardInputText('');
     setShowingJustSavedCards(false);
@@ -1072,22 +1079,35 @@ export default function App() {
   }
 
   async function loadAdminAccountsFromApi(authHeader) {
-    const response = await fetch(`${apiBaseUrl}/api/admin/accounts`, {
-      headers: {
-        Authorization: authHeader
-      }
-    });
+    const headers = {
+      Authorization: authHeader
+    };
 
-    if (!response.ok) {
+    const [accountsResponse, resetEventsResponse] = await Promise.all([
+      fetch(`${apiBaseUrl}/api/admin/accounts`, { headers }),
+      fetch(`${apiBaseUrl}/api/admin/password-reset-events`, { headers })
+    ]);
+
+    if (!accountsResponse.ok) {
       setAdminAccounts([]);
       setAdminAccountCount(null);
+      setAdminPasswordResetEvents([]);
       return;
     }
 
-    const payload = await response.json();
-    const accounts = Array.isArray(payload.accounts) ? payload.accounts : [];
+    const accountsPayload = await accountsResponse.json();
+    const accounts = Array.isArray(accountsPayload.accounts) ? accountsPayload.accounts : [];
     setAdminAccounts(accounts);
     setAdminAccountCount(accounts.length);
+
+    if (!resetEventsResponse.ok) {
+      setAdminPasswordResetEvents([]);
+      return;
+    }
+
+    const resetEventsPayload = await resetEventsResponse.json();
+    const events = Array.isArray(resetEventsPayload.events) ? resetEventsPayload.events : [];
+    setAdminPasswordResetEvents(events);
   }
 
   async function loadUserCardsFromApi(authHeader = loginAuthHeader) {
@@ -1856,6 +1876,37 @@ export default function App() {
                         <td>{account.passkey || '(unavailable)'}</td>
                       </tr>
                     ))}
+                  </tbody>
+                </table>
+                <h2>Password Reset Activity</h2>
+                <table className="price-table">
+                  <thead>
+                    <tr>
+                      <th>When</th>
+                      <th>Event</th>
+                      <th>User</th>
+                      <th>Identifier</th>
+                      <th>IP</th>
+                      <th>Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adminPasswordResetEvents.length === 0 ? (
+                      <tr>
+                        <td colSpan={6}>No password reset attempts logged yet.</td>
+                      </tr>
+                    ) : (
+                      adminPasswordResetEvents.map((event) => (
+                        <tr key={event.id}>
+                          <td>{new Date(event.createdAt).toLocaleString()}</td>
+                          <td>{event.eventType}</td>
+                          <td>{event.username || event.email || '-'}</td>
+                          <td>{event.identifier || '-'}</td>
+                          <td>{event.requestIp || '-'}</td>
+                          <td>{event.detail || '-'}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
