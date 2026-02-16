@@ -608,6 +608,11 @@ h1 {
   font-size: 1rem;
 }
 
+.card-upload-results {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .card-upload-results ul {
   margin: 0;
   padding-left: 1.1rem;
@@ -818,6 +823,14 @@ h1 {
 }
 
 @media (max-width: 640px) {
+  .page {
+    padding: 0.85rem 0.65rem 2.5rem;
+  }
+
+  h1 {
+    font-size: clamp(1.55rem, 7.8vw, 2.2rem);
+  }
+
   .topbar {
     margin-bottom: 1.5rem;
     flex-direction: column;
@@ -829,6 +842,11 @@ h1 {
     align-items: stretch;
   }
 
+  .topbar-left,
+  .topnav {
+    flex-wrap: wrap;
+  }
+
   .top-login-form {
     justify-content: stretch;
   }
@@ -836,5 +854,47 @@ h1 {
   .top-login-form input,
   .top-login-form button {
     width: 100%;
+  }
+
+  .join {
+    padding: 0.9rem;
+  }
+
+  .join-form input,
+  .join-form button,
+  .dashboard-tool button {
+    width: 100%;
+  }
+
+  .dashboard-actions {
+    align-items: stretch;
+  }
+
+  .dashboard-actions .action-button,
+  .dashboard-actions .sort-control {
+    width: 100%;
+  }
+
+  .dashboard-actions .sort-select {
+    width: 100%;
+  }
+
+  .price-table {
+    min-width: 760px;
+    font-size: 0.84rem;
+  }
+
+  .price-table th,
+  .price-table td {
+    padding: 0.43rem 0.38rem;
+  }
+
+  .requesting-cell {
+    width: 2.8rem;
+  }
+
+  .requesting-toggle {
+    min-width: 1.15rem;
+    max-width: 1.2rem;
   }
 }
