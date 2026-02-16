@@ -2062,14 +2062,6 @@ export default function App() {
                           )
                         )}
                       </tbody>
-                      <tfoot>
-                        <tr>
-                          <th colSpan={5}>Total</th>
-                          <th>${savedTotal.toFixed(2)}</th>
-                          <th />
-                          <th />
-                        </tr>
-                      </tfoot>
                     </table>
                     )}
 
@@ -2247,15 +2239,6 @@ export default function App() {
                             </tr>
                             ))}
                         </tbody>
-                        <tfoot>
-                          <tr>
-                            <th colSpan={5}>Total</th>
-                            <th>${requestingTotal.toFixed(2)}</th>
-                            <th />
-                            <th />
-                            <th />
-                          </tr>
-                        </tfoot>
                       </table>
                     )}
                   </div>
