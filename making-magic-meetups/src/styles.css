@@ -822,7 +822,7 @@ h1 {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 820px) {
   .page {
     padding: 0.85rem 0.65rem 2.5rem;
   }
@@ -904,7 +904,7 @@ h1 {
 
   .mobile-hide-saved,
   .mobile-hide-requesting {
-    display: none;
+    display: none !important;
   }
 
   .requesting-cell {
@@ -915,5 +915,32 @@ h1 {
     width: 1.05rem;
     min-width: 1.05rem;
     max-width: 1.05rem;
+  }
+
+  /* Hard hide non-mobile columns for My Cards tables */
+  .my-cards-saved-table th:nth-child(2),
+  .my-cards-saved-table td:nth-child(2),
+  .my-cards-saved-table th:nth-child(3),
+  .my-cards-saved-table td:nth-child(3),
+  .my-cards-saved-table th:nth-child(6),
+  .my-cards-saved-table td:nth-child(6),
+  .my-cards-saved-table th:nth-child(8),
+  .my-cards-saved-table td:nth-child(8) {
+    display: none !important;
+  }
+
+  .my-cards-requesting-table th:nth-child(2),
+  .my-cards-requesting-table td:nth-child(2),
+  .my-cards-requesting-table th:nth-child(3),
+  .my-cards-requesting-table td:nth-child(3),
+  .my-cards-requesting-table th:nth-child(5),
+  .my-cards-requesting-table td:nth-child(5),
+  .my-cards-requesting-table th:nth-child(6),
+  .my-cards-requesting-table td:nth-child(6),
+  .my-cards-requesting-table th:nth-child(8),
+  .my-cards-requesting-table td:nth-child(8),
+  .my-cards-requesting-table th:nth-child(9),
+  .my-cards-requesting-table td:nth-child(9) {
+    display: none !important;
   }
 }

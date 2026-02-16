@@ -1679,7 +1679,7 @@ export default function App() {
                         </select>
                       </label>
                     </div>
-                    <table className="price-table">
+                    <table className="price-table my-cards-saved-table">
                       <thead>
                         <tr>
                           <th>Pic</th>
@@ -2076,7 +2076,7 @@ export default function App() {
                     {requestingPairs.length === 0 ? (
                       <p className="notice subtle">No cards are marked as requesting yet.</p>
                     ) : (
-                      <table className="price-table">
+                      <table className="price-table my-cards-requesting-table">
                           <thead>
                             <tr>
                               <th>Pic</th>
