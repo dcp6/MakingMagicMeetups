@@ -57,6 +57,7 @@ export default function App() {
   const [accountUsername, setAccountUsername] = useState('');
   const [accountEmail, setAccountEmail] = useState('');
   const [accountPassword, setAccountPassword] = useState('');
+  const [accountPasswordConfirm, setAccountPasswordConfirm] = useState('');
   const [accountFeedback, setAccountFeedback] = useState('');
   const [isAccountSubmitting, setIsAccountSubmitting] = useState(false);
   const [loginIdentifier, setLoginIdentifier] = useState('');
@@ -607,8 +608,14 @@ export default function App() {
 
   async function handleCreateAccount(event) {
     event.preventDefault();
-    setIsAccountSubmitting(true);
     setAccountFeedback('');
+
+    if (accountPassword !== accountPasswordConfirm) {
+      setAccountFeedback('Passwords do not match.');
+      return;
+    }
+
+    setIsAccountSubmitting(true);
 
     try {
       const response = await fetch(`${apiBaseUrl}/api/accounts`, {
@@ -634,6 +641,7 @@ export default function App() {
       setAccountUsername('');
       setAccountEmail('');
       setAccountPassword('');
+      setAccountPasswordConfirm('');
       setAccountFeedback('Account created successfully. You can now log in.');
     } catch (_error) {
       setAccountFeedback('Network error. Please try again.');
@@ -2411,6 +2419,18 @@ export default function App() {
                 placeholder="Create password"
                 value={accountPassword}
                 onChange={(event) => setAccountPassword(event.target.value)}
+                required
+                minLength={6}
+              />
+              <label htmlFor="create-password-confirm" className="sr-only">
+                Confirm Password
+              </label>
+              <input
+                id="create-password-confirm"
+                type="password"
+                placeholder="Confirm password"
+                value={accountPasswordConfirm}
+                onChange={(event) => setAccountPasswordConfirm(event.target.value)}
                 required
                 minLength={6}
               />
