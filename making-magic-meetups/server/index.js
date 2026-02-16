@@ -323,6 +323,7 @@ db.exec(`
     image_small,
     image_normal
   FROM account_card_items
+  WHERE 1 = 1
   ON CONFLICT(account_id, card_name) DO UPDATE SET
     quantity = excluded.quantity,
     asking_quantity = excluded.asking_quantity,
