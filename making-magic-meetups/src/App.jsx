@@ -102,6 +102,10 @@ export default function App() {
         setRoute('settings');
         return;
       }
+      if (hash === '#/my-cards') {
+        setRoute('my-cards');
+        return;
+      }
       setRoute('home');
     }
 
@@ -243,6 +247,17 @@ export default function App() {
         setSettingsFeedback('Could not load settings.');
       }
     })();
+  }, [route, loggedInUser, loginAuthHeader, apiBaseUrl]);
+
+  useEffect(() => {
+    if (route !== 'my-cards') {
+      return;
+    }
+    if (!loggedInUser || loggedInUser.role !== 'user' || !loginAuthHeader) {
+      return;
+    }
+    loadUserCardsFromApi(loginAuthHeader);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route, loggedInUser, loginAuthHeader, apiBaseUrl]);
 
   useEffect(() => {
@@ -1309,6 +1324,9 @@ export default function App() {
       <a className="topbar-link" href="#/settings">
         Settings
       </a>
+      <a className="topbar-link" href="#/my-cards">
+        My Cards
+      </a>
     </div>
   );
 
@@ -1724,6 +1742,199 @@ export default function App() {
                 ) : null}
               </>
             ) : null}
+          </section>
+        </main>
+        {loginServiceIndicator}
+      </div>
+    );
+  }
+
+  if (route === 'my-cards') {
+    return (
+      <div className="page">
+        <header className="topbar">
+          {headerBrand}
+          {headerLogin}
+        </header>
+
+        <main>
+          <section className="join">
+            <p className="kicker">My Cards</p>
+            <h1>My Cards</h1>
+            {!loggedInUser || loggedInUser.role !== 'user' ? (
+              <p>Please log in with a user account to view your saved card list.</p>
+            ) : (
+              <>
+                <p>This is your saved card database (permanent storage). You can edit and save.</p>
+                <div className="dashboard-actions">
+                  <button type="button" onClick={() => loadUserCardsFromApi(loginAuthHeader)}>
+                    Reload From Database
+                  </button>
+                  <button type="button" onClick={handleSaveList}>
+                    Save Changes
+                  </button>
+                </div>
+                {cardUploadFeedback ? <p>{cardUploadFeedback}</p> : null}
+                {isCardPriceLoading ? <p>Loading prices from Scryfall...</p> : null}
+                {uploadedCards.length > 0 ? (
+                  <div className="card-upload-results">
+                    <h2>Saved Cards</h2>
+                    <table className="price-table">
+                      <thead>
+                        <tr>
+                          <th>Pic</th>
+                          <th>Card</th>
+                          <th>Version</th>
+                          <th>Qty</th>
+                          <th>TCGPlayer Low</th>
+                          <th>Line Total</th>
+                          <th>Asking For</th>
+                          <th>Ask Qty</th>
+                          <th>Asking Total</th>
+                          <th>Links / Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {uploadedCards.map((card, index) => (
+                          <tr key={`${card.inputName || card.resolvedName}-${index}`}>
+                            <td>
+                              {card.imageSmall ? (
+                                <div className="thumb-wrap">
+                                  <img
+                                    className="card-thumb"
+                                    src={card.imageSmall}
+                                    alt={card.resolvedName}
+                                    loading="lazy"
+                                  />
+                                  {card.imageNormal ? (
+                                    <img
+                                      className="card-thumb-preview"
+                                      src={card.imageNormal}
+                                      alt=""
+                                      loading="lazy"
+                                    />
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td>{card.resolvedName}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="version-button"
+                                onClick={() =>
+                                  loadVersionOptionsFor(
+                                    card.scryfallId || card.resolvedName || card.inputName,
+                                    card.resolvedName || card.inputName
+                                  )
+                                }
+                              >
+                                {card.setCode && card.collectorNumber
+                                  ? `${card.setCode.toUpperCase()} #${card.collectorNumber}`
+                                  : 'Choose'}
+                              </button>
+                              {versionLoadingKey ===
+                              (card.scryfallId || card.resolvedName || card.inputName) ? (
+                                <div className="version-picker">Loading...</div>
+                              ) : null}
+                              {versionOptionsByKey[
+                                card.scryfallId || card.resolvedName || card.inputName
+                              ]?.length ? (
+                                <div className="version-picker">
+                                  <select
+                                    value={card.scryfallId || ''}
+                                    onChange={(event) =>
+                                      handleVersionChange(index, event.target.value)
+                                    }
+                                  >
+                                    {versionOptionsByKey[
+                                      card.scryfallId || card.resolvedName || card.inputName
+                                    ].map((option) => (
+                                      <option key={option.id} value={option.id}>
+                                        {option.set.toUpperCase()} #{option.collectorNumber} ·{' '}
+                                        {option.setName} · {option.releasedAt}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              ) : null}
+                            </td>
+                            <td>
+                              <input
+                                className="qty-input"
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={card.quantity}
+                                onChange={(event) => handleQuantityChange(index, event.target.value)}
+                              />
+                            </td>
+                            <td>{card.tcgLow}</td>
+                            <td>
+                              {card.lineTotalUsd !== null
+                                ? `$${card.lineTotalUsd.toFixed(2)}`
+                                : 'N/A'}
+                            </td>
+                            <td>
+                              <input
+                                className="ask-input"
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="0.00"
+                                value={card.askingInput ?? formatCents(card.askingPriceCents)}
+                                onChange={(event) =>
+                                  handleAskingPriceChange(index, event.target.value)
+                                }
+                                onBlur={() => handleAskingPriceBlur(index)}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                className="qty-input"
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={card.askingQuantity ?? card.quantity}
+                                onChange={(event) =>
+                                  handleAskingQuantityChange(index, event.target.value)
+                                }
+                              />
+                            </td>
+                            <td>
+                              {card.askingLineTotalUsd !== null
+                                ? `$${card.askingLineTotalUsd.toFixed(2)}`
+                                : 'N/A'}
+                            </td>
+                            <td>
+                              {card.tcgUrl ? (
+                                <a href={card.tcgUrl} target="_blank" rel="noreferrer">
+                                  TCGPlayer
+                                </a>
+                              ) : card.error ? (
+                                card.error
+                              ) : (
+                                'No link'
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <th colSpan={5}>Total</th>
+                          <th>${cardCostTotal.toFixed(2)}</th>
+                          <th />
+                          <th>${cardAskingTotal.toFixed(2)}</th>
+                          <th />
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                ) : (
+                  <p>No saved cards yet.</p>
+                )}
+              </>
+            )}
           </section>
         </main>
         {loginServiceIndicator}
