@@ -68,6 +68,7 @@ export default function App() {
   const [cardUploadFeedback, setCardUploadFeedback] = useState('');
   const [isCardPriceLoading, setIsCardPriceLoading] = useState(false);
   const [isCardsSaving, setIsCardsSaving] = useState(false);
+  const [deletingCardKey, setDeletingCardKey] = useState(null);
   const [versionOptionsByKey, setVersionOptionsByKey] = useState({});
   const [versionLoadingKey, setVersionLoadingKey] = useState(null);
   const [cardSortMode, setCardSortMode] = useState('upload');
@@ -1321,6 +1322,65 @@ export default function App() {
     }
   }
 
+  async function handleDeleteSavedCard(card) {
+    if (!loggedInUser || loggedInUser.role !== 'user') {
+      setCardUploadFeedback('Log in with a user account to delete saved cards.');
+      return;
+    }
+    if (!loginAuthHeader) {
+      setCardUploadFeedback('Please log in again.');
+      return;
+    }
+
+    const cardName = String(card?.resolvedName || card?.inputName || '').trim();
+    if (!cardName) {
+      return;
+    }
+
+    const key = String(card?.scryfallId || cardName);
+    if (deletingCardKey === key) {
+      return;
+    }
+
+    const ok = window.confirm(`Delete "${cardName}" from My Cards?`);
+    if (!ok) {
+      return;
+    }
+
+    setDeletingCardKey(key);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/cards`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: loginAuthHeader
+        },
+        body: JSON.stringify({ cardName })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setCardUploadFeedback(payload.error || 'Could not delete saved card.');
+        return;
+      }
+
+      setUploadedCards((previous) => {
+        const next = previous.filter((entry) => {
+          const entryName = String(entry.resolvedName || entry.inputName || '').trim();
+          return entryName.toLowerCase() !== cardName.toLowerCase();
+        });
+        setCardCostTotal(recomputeCostTotal(next));
+        setCardAskingTotal(recomputeAskingTotal(next));
+        return next;
+      });
+
+      setCardUploadFeedback(`Deleted "${cardName}".`);
+    } catch (_error) {
+      setCardUploadFeedback('Could not delete saved card right now.');
+    } finally {
+      setDeletingCardKey(null);
+    }
+  }
+
   const headerLogin = (
     <div className="topbar-right">
       <form className="top-login-form" onSubmit={handleUserLogin}>
@@ -1798,15 +1858,39 @@ export default function App() {
                                 : 'N/A'}
                             </td>
                             <td>
-                              {card.tcgUrl ? (
-                                <a href={card.tcgUrl} target="_blank" rel="noreferrer">
-                                  TCGPlayer
-                                </a>
-                              ) : card.error ? (
-                                card.error
-                              ) : (
-                                'No link'
-                              )}
+                              <div className="row-actions">
+                                {card.tcgUrl ? (
+                                  <a href={card.tcgUrl} target="_blank" rel="noreferrer">
+                                    TCGPlayer
+                                  </a>
+                                ) : card.error ? (
+                                  <span>{card.error}</span>
+                                ) : (
+                                  <span>No link</span>
+                                )}
+                                <button
+                                  type="button"
+                                  className="row-button danger"
+                                  onClick={() => handleDeleteSavedCard(card)}
+                                  disabled={
+                                    isCardPriceLoading ||
+                                    isCardsSaving ||
+                                    deletingCardKey ===
+                                      String(
+                                        card.scryfallId ||
+                                          String(card.resolvedName || card.inputName || '').trim()
+                                      )
+                                  }
+                                >
+                                  {deletingCardKey ===
+                                  String(
+                                    card.scryfallId ||
+                                      String(card.resolvedName || card.inputName || '').trim()
+                                  )
+                                    ? 'Deleting...'
+                                    : 'Delete'}
+                                </button>
+                              </div>
                             </td>
                           </tr>
                           )

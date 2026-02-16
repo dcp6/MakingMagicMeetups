@@ -481,6 +481,11 @@ const listMyCards = db.prepare(`
   ORDER BY card_name COLLATE NOCASE ASC
 `);
 
+const deleteMyCardByName = db.prepare(`
+  DELETE FROM my_cards
+  WHERE account_id = ? AND LOWER(card_name) = LOWER(?)
+`);
+
 function parseAskingPriceCents(value) {
   if (value === null || value === undefined || value === '') {
     return null;
@@ -641,7 +646,7 @@ const corsOptions = {
     }
     return callback(new Error('Not allowed by CORS'));
   },
-  methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Api-Key'],
   optionsSuccessStatus: 204
 };
@@ -1135,6 +1140,26 @@ app.post('/api/cards', (req, res) => {
     cards: expandedCards,
     entries
   });
+});
+
+app.delete('/api/cards', (req, res) => {
+  const credentials = parseBasicAuth(req);
+  if (!credentials) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
+  const user = authenticateLogin(credentials.identifier, credentials.password);
+  if (!user || user.role !== 'user') {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
+  const cardName = String(req.body?.cardName || '').trim();
+  if (!cardName) {
+    return res.status(400).json({ error: 'Please provide a cardName.' });
+  }
+
+  const info = deleteMyCardByName.run(user.id, cardName);
+  return res.json({ ok: true, deleted: info.changes || 0 });
 });
 
 app.get('/api/users', (_req, res) => {

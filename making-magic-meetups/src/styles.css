@@ -502,6 +502,55 @@ h1 {
   outline-offset: 2px;
 }
 
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.row-button {
+  min-height: 34px;
+  padding: 0 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-900);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+
+.row-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(15, 33, 53, 0.14);
+}
+
+.row-button:active {
+  transform: translateY(0);
+  box-shadow: 0 8px 14px rgba(15, 33, 53, 0.12);
+}
+
+.row-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  filter: grayscale(0.2);
+  box-shadow: none;
+  transform: none;
+}
+
+.row-button:focus-visible {
+  outline: 2px solid var(--sun-400);
+  outline-offset: 2px;
+}
+
+.row-button.danger {
+  border-color: rgba(255, 64, 64, 0.35);
+  background: linear-gradient(120deg, #ff6b6b, #ff9a7a);
+  color: #2f0b0b;
+}
+
 .card-upload-results h2 {
   margin: 0.75rem 0 0.4rem;
   font-size: 1rem;
