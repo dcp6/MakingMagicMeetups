@@ -6,6 +6,7 @@ import cors from 'cors';
 import Database from 'better-sqlite3';
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import { isPostgresConfigured } from './db/postgres/config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -56,6 +57,8 @@ const passwordResetBaseUrl = String(
 ).trim();
 const resendApiKey = String(process.env.RESEND_API_KEY || '').trim();
 const resetEmailFrom = String(process.env.RESET_EMAIL_FROM || '').trim();
+const isPostgresEnabled = isPostgresConfigured();
+const dbBackend = isPostgresEnabled ? 'sqlite (postgres-configured)' : 'sqlite';
 
 fs.mkdirSync(dbDir, { recursive: true });
 
@@ -1069,7 +1072,11 @@ app.get('/', (_req, res) => {
 });
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    dbBackend,
+    postgresConfigured: isPostgresEnabled
+  });
 });
 
 app.get('/api/mapkit/token', (_req, res) => {
@@ -1869,4 +1876,5 @@ app.get('/api/admin/password-reset-events', (req, res) => {
 app.listen(port, () => {
   console.log(`User API listening on http://localhost:${port}`);
   console.log(`SQLite DB: ${dbPath}`);
+  console.log(`DB backend mode: ${dbBackend}`);
 });

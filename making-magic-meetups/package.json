@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "dev:server": "node server/index.js",
+    "db:init:postgres": "node server/db/postgres/init.js",
+    "db:migrate:sqlite-to-postgres": "node server/scripts/migrate-sqlite-to-postgres.js",
     "seed:mock-users": "node server/seed-mock-users.js",
     "seed:prod-accounts": "node server/seed-production-accounts.js",
     "build": "vite build",
@@ -20,6 +22,7 @@
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.2",
+    "pg": "^8.18.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

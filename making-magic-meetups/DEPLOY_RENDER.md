@@ -36,3 +36,23 @@ This inserts 5 fake accounts (passwords max 10 characters) with `INSERT OR IGNOR
 - `FRONTEND_ORIGIN` is set to `https://dcp6.github.io` in `render.yaml`.
 - `DATA_DIR` is set to `/var/data` for the API service.
 - For true persistence across deploys/restarts, attach a Render persistent disk mounted at `/var/data`.
+
+## Phase 1 Postgres Setup (In Progress)
+
+The repo now includes Postgres schema + migration tools:
+
+- `npm run db:init:postgres`
+- `npm run db:migrate:sqlite-to-postgres`
+
+Required env vars:
+
+- `DATABASE_URL` (or `POSTGRES_URL`)
+- Optional `PGSSLMODE=no-verify` for hosted Postgres that requires TLS with relaxed verification.
+
+Suggested migration flow:
+
+1. Set `DATABASE_URL`.
+2. Run `npm run db:init:postgres`.
+3. Run `DRY_RUN=true npm run db:migrate:sqlite-to-postgres`.
+4. Run `npm run db:migrate:sqlite-to-postgres`.
+5. Verify row counts in Postgres before switching runtime reads/writes.
