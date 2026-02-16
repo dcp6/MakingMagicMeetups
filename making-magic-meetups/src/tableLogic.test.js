@@ -32,7 +32,7 @@ describe('tableLogic interactivity', () => {
       {
         resolvedName: 'Card A',
         quantity: 1,
-        requesting: true,
+        marketStatus: 'requesting',
         lineTotalUsd: 2.0,
         askingQuantity: 3,
         askingPriceCents: 250
@@ -40,7 +40,7 @@ describe('tableLogic interactivity', () => {
       {
         resolvedName: 'Card B',
         quantity: 2,
-        requesting: false,
+        marketStatus: 'offering',
         lineTotalUsd: 4.0,
         askingQuantity: 2,
         askingPriceCents: 100
@@ -48,11 +48,13 @@ describe('tableLogic interactivity', () => {
     ];
 
     const model = buildMyCardsTableModel(cards, 'upload');
-    expect(model.savedTotal).toBe(4.0);
+    expect(model.savedTotal).toBe(6.0);
     expect(model.requestingTotal).toBe(2.0);
+    expect(model.offeringTotal).toBe(4.0);
     expect(model.requestingTotalValue).toBe(7.5);
-    expect(model.savedQtyTotal).toBe(2);
+    expect(model.savedQtyTotal).toBe(3);
     expect(model.requestingQtyTotal).toBe(1);
+    expect(model.offeringQtyTotal).toBe(2);
   });
 
   it('sorts by tcg low descending and falls back to name', () => {

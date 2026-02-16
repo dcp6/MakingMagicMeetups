@@ -568,10 +568,22 @@ h1 {
 }
 
 .requesting-cell {
-  width: 3.4rem;
+  width: 6.2rem;
   padding: 0.2rem !important;
   text-align: center !important;
   vertical-align: middle !important;
+}
+
+.market-status-select {
+  min-height: 1.95rem;
+  width: 100%;
+  border: 1px solid var(--stroke);
+  border-radius: 0.45rem;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-900);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0 0.35rem;
 }
 
 .requesting-toggle {
@@ -979,7 +991,7 @@ h1 {
   }
 
   .requesting-cell {
-    width: 2.8rem;
+    width: 6rem;
   }
 
   .requesting-toggle {
@@ -997,7 +1009,7 @@ h1 {
   }
 
   .requesting-cell {
-    width: 2.4rem;
+    width: 5.8rem;
   }
 
   .requesting-toggle {

@@ -786,6 +786,38 @@ function parseAskingPriceCentsFromSubmittedCard(submitted) {
   return parseAskingPriceCents(submitted?.askingPrice ?? submitted?.asking_price);
 }
 
+function marketStatusToCode(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'requesting') {
+    return 2;
+  }
+  if (normalized === 'offering') {
+    return 1;
+  }
+  return 0;
+}
+
+function marketStatusFromCode(value) {
+  const numeric = Number(value);
+  if (numeric === 2) {
+    return 'requesting';
+  }
+  if (numeric === 1) {
+    return 'offering';
+  }
+  return 'have';
+}
+
+function parseMarketStatusFromSubmittedCard(submitted) {
+  if (submitted && Object.prototype.hasOwnProperty.call(submitted, 'marketStatus')) {
+    return marketStatusToCode(submitted.marketStatus);
+  }
+  if (submitted && Object.prototype.hasOwnProperty.call(submitted, 'requesting')) {
+    return submitted.requesting ? 2 : 0;
+  }
+  return 0;
+}
+
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.scryptSync(password, salt, 64).toString('hex');
@@ -1325,7 +1357,7 @@ async function saveCardsRuntime(accountId, entries, saveMode) {
           id,
           entry.cardName,
           entry.quantity,
-          entry.requesting ? 1 : 0,
+          entry.marketStatusCode ?? 0,
           normalizedAskQty,
           entry.askingPriceCents ?? null,
           entry.scryfallId ?? null,
@@ -1380,7 +1412,7 @@ async function saveCardsRuntime(accountId, entries, saveMode) {
             accountId,
             entry.cardName,
             entry.quantity,
-            entry.requesting ? 1 : 0,
+            entry.marketStatusCode ?? 0,
             normalizedAskQty,
             entry.askingPriceCents ?? null,
             entry.scryfallId ?? null,
@@ -1421,7 +1453,7 @@ async function saveCardsRuntime(accountId, entries, saveMode) {
             accountId,
             entry.cardName,
             entry.quantity,
-            entry.requesting ? 1 : 0,
+            entry.marketStatusCode ?? 0,
             normalizedAskQty,
             entry.askingPriceCents ?? null,
             entry.scryfallId ?? null,
@@ -2254,9 +2286,10 @@ app.get('/api/cards', async (req, res) => {
 
   const rows = await listMyCardsRuntime(user.id);
   const entries = rows.map((row) => ({
+    marketStatus: marketStatusFromCode(row.requesting),
     cardName: row.card_name,
     quantity: row.quantity,
-    requesting: Boolean(row.requesting),
+    requesting: Number(row.requesting) === 2,
     askingQuantity:
       row.asking_quantity === null || row.asking_quantity === undefined
         ? null
@@ -2302,7 +2335,7 @@ app.post('/api/cards', async (req, res) => {
   for (const submitted of submittedCards) {
     let cardName = '';
     let quantity = 1;
-    let requesting = 0;
+    let marketStatusCode = 0;
     let askingQuantity = null;
     let askingPriceCents = null;
     let scryfallId = null;
@@ -2324,7 +2357,7 @@ app.post('/api/cards', async (req, res) => {
       } else {
         quantity = Math.floor(quantity);
       }
-      requesting = submitted.requesting ? 1 : 0;
+      marketStatusCode = parseMarketStatusFromSubmittedCard(submitted);
       if (submitted.askingQuantity !== null && submitted.askingQuantity !== undefined) {
         const rawAskQty = Number(submitted.askingQuantity);
         if (Number.isFinite(rawAskQty) && rawAskQty >= 0) {
@@ -2352,7 +2385,7 @@ app.post('/api/cards', async (req, res) => {
     const existing = cardMap.get(identityKey);
     if (existing) {
       existing.quantity += quantity;
-      existing.requesting = existing.requesting || requesting ? 1 : 0;
+      existing.marketStatusCode = Math.max(existing.marketStatusCode, marketStatusCode);
       if (askingPriceCents !== null) {
         existing.askingPriceCents = askingPriceCents;
       }
@@ -2371,7 +2404,7 @@ app.post('/api/cards', async (req, res) => {
       cardMap.set(identityKey, {
         cardName,
         quantity,
-        requesting,
+        marketStatusCode,
         askingQuantity,
         askingPriceCents,
         scryfallId,
@@ -2404,12 +2437,17 @@ app.post('/api/cards', async (req, res) => {
       expandedCards.push(entry.cardName);
     }
   }
+  const normalizedEntries = entries.map((entry) => ({
+    ...entry,
+    marketStatus: marketStatusFromCode(entry.marketStatusCode),
+    requesting: entry.marketStatusCode === 2
+  }));
   return res.json({
     ok: true,
     uniqueCount: entries.length,
     totalCount: totalCards,
     cards: expandedCards,
-    entries
+    entries: normalizedEntries
   });
 });
 

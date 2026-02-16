@@ -977,6 +977,18 @@ export default function App() {
     return Math.round(dollars * 100);
   }
 
+  function normalizeMarketStatus(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'have' || normalized === 'requesting' || normalized === 'offering') {
+      return normalized;
+    }
+    return 'have';
+  }
+
+  function marketStatusFromLegacyRequesting(value) {
+    return value ? 'requesting' : 'have';
+  }
+
   function recomputeCostTotal(pricedEntries) {
     return pricedEntries.reduce((sum, entry) => {
       if (entry.lineTotalUsd === null) {
@@ -1014,11 +1026,15 @@ export default function App() {
           parsedAskingQuantity === null || !Number.isFinite(parsedAskingQuantity)
             ? null
             : Math.max(0, Math.floor(parsedAskingQuantity));
+        const marketStatus = normalizeMarketStatus(
+          card.marketStatus ?? marketStatusFromLegacyRequesting(Boolean(card.requesting))
+        );
 
         return {
           cardName,
           quantity,
-          requesting: Boolean(card.requesting),
+          marketStatus,
+          requesting: marketStatus === 'requesting',
           askingQuantity,
           askingPriceCents,
           scryfallId: card.scryfallId || null,
@@ -1054,12 +1070,17 @@ export default function App() {
       const imageNormal = priced.imageNormal ?? entries[index]?.imageNormal ?? null;
       const imageSmallBack = priced.imageSmallBack ?? entries[index]?.imageSmallBack ?? null;
       const imageNormalBack = priced.imageNormalBack ?? entries[index]?.imageNormalBack ?? null;
-      const requesting = Boolean(entries[index]?.requesting);
+      const marketStatus = normalizeMarketStatus(
+        entries[index]?.marketStatus ??
+          marketStatusFromLegacyRequesting(Boolean(entries[index]?.requesting))
+      );
+      const requesting = marketStatus === 'requesting';
 
       return {
         ...priced,
         quantity,
         requesting,
+        marketStatus,
         askingQuantity,
         askingPriceCents,
         askingInput: formatCents(askingPriceCents),
@@ -1140,7 +1161,12 @@ export default function App() {
               Number.isFinite(Number(entry.quantity)) && Number(entry.quantity) >= 0
                 ? Math.floor(Number(entry.quantity))
                 : 1,
-            requesting: Boolean(entry.requesting),
+            marketStatus: normalizeMarketStatus(
+              entry.marketStatus ?? marketStatusFromLegacyRequesting(Boolean(entry.requesting))
+            ),
+            requesting: normalizeMarketStatus(
+              entry.marketStatus ?? marketStatusFromLegacyRequesting(Boolean(entry.requesting))
+            ) === 'requesting',
             askingQuantity:
               entry.askingQuantity === null || entry.askingQuantity === undefined
                 ? null
@@ -1212,9 +1238,18 @@ export default function App() {
     });
   }
 
-  function handleRequestingToggle(index, nextChecked) {
+  function handleMarketStatusChange(index, nextStatus) {
+    const normalized = normalizeMarketStatus(nextStatus);
     setUploadedCards((previous) =>
-      previous.map((card, i) => (i === index ? { ...card, requesting: Boolean(nextChecked) } : card))
+      previous.map((card, i) =>
+        i === index
+          ? {
+              ...card,
+              marketStatus: normalized,
+              requesting: normalized === 'requesting'
+            }
+          : card
+      )
     );
   }
 
@@ -1975,7 +2010,7 @@ export default function App() {
                           <th>Qty</th>
                           <th>TCGPlayer Low</th>
                           <th className="mobile-hide-saved">Line Total</th>
-                          <th>Requesting</th>
+                          <th>Status</th>
                           <th className="mobile-hide-saved">Links / Status</th>
                         </tr>
                       </thead>
@@ -2070,15 +2105,16 @@ export default function App() {
                                 : 'N/A'}
                             </td>
                             <td className="requesting-cell">
-                              <button
-                                type="button"
-                                className={`requesting-toggle ${card.requesting ? 'active' : ''}`}
-                                onClick={() => handleRequestingToggle(index, !card.requesting)}
-                                aria-label={`Requesting ${card.resolvedName}`}
-                                title={card.requesting ? 'Requesting enabled' : 'Requesting disabled'}
+                              <select
+                                className="market-status-select"
+                                value={card.marketStatus || 'have'}
+                                onChange={(event) => handleMarketStatusChange(index, event.target.value)}
+                                aria-label={`Status ${card.resolvedName}`}
                               >
-                                {card.requesting ? '✓' : ''}
-                              </button>
+                                <option value="have">Have</option>
+                                <option value="requesting">Requesting</option>
+                                <option value="offering">Offering</option>
+                              </select>
                             </td>
                             <td>
                               {card.tcgUrl ? (
@@ -2119,26 +2155,17 @@ export default function App() {
     const {
       savedPairs,
       requestingPairs,
+      offeringPairs,
       savedTotal,
       requestingTotal,
+      offeringTotal,
       requestingTotalValue,
+      offeringTotalValue,
       savedQtyTotal,
-      requestingQtyTotal
+      requestingQtyTotal,
+      offeringQtyTotal,
+      haveQtyTotal
     } = myCardsTableModel;
-    const offeringPairs = savedPairs;
-    const offeringTotal = savedTotal;
-    const offeringQtyTotal = savedQtyTotal;
-    const offeringTotalValue = offeringPairs.reduce((sum, { card }) => {
-      const quantity =
-        card.askingQuantity === null || card.askingQuantity === undefined
-          ? Math.max(0, Number(card.quantity) || 0)
-          : Math.max(0, Number(card.askingQuantity) || 0);
-      const askingPriceCents = Number(card.askingPriceCents);
-      if (!Number.isFinite(askingPriceCents) || askingPriceCents < 0) {
-        return sum;
-      }
-      return sum + (quantity * askingPriceCents) / 100;
-    }, 0);
 
     return (
       <div className="page">
@@ -2195,7 +2222,9 @@ export default function App() {
                     <p className="table-total">Table Total: ${savedTotal.toFixed(2)}</p>
                     <p className="notice subtle">
                       Saved: {savedQtyTotal} total {savedQtyTotal === 1 ? 'card' : 'cards'} ·
-                      Requesting: {requestingQtyTotal} total {requestingQtyTotal === 1 ? 'card' : 'cards'}
+                      Have: {haveQtyTotal} total {haveQtyTotal === 1 ? 'card' : 'cards'} ·
+                      Requesting: {requestingQtyTotal} total {requestingQtyTotal === 1 ? 'card' : 'cards'} ·
+                      Offering: {offeringQtyTotal} total {offeringQtyTotal === 1 ? 'card' : 'cards'}
                     </p>
                     {savedPairs.length === 0 ? (
                       <p className="notice subtle">No cards in your Saved list right now.</p>
@@ -2217,7 +2246,7 @@ export default function App() {
                           <th>Qty</th>
                           <th>TCGPlayer Low</th>
                           <th className="mobile-hide-saved">Line Total</th>
-                          <th>Requesting</th>
+                          <th>Status</th>
                           <th className="mobile-hide-saved">Links / Status</th>
                         </tr>
                       </thead>
@@ -2312,15 +2341,16 @@ export default function App() {
                                 : 'N/A'}
                             </td>
                             <td className="requesting-cell">
-                              <button
-                                type="button"
-                                className={`requesting-toggle ${card.requesting ? 'active' : ''}`}
-                                onClick={() => handleRequestingToggle(index, !card.requesting)}
-                                aria-label={`Requesting ${card.resolvedName}`}
-                                title={card.requesting ? 'Requesting enabled' : 'Requesting disabled'}
+                              <select
+                                className="market-status-select"
+                                value={card.marketStatus || 'have'}
+                                onChange={(event) => handleMarketStatusChange(index, event.target.value)}
+                                aria-label={`Status ${card.resolvedName}`}
                               >
-                                {card.requesting ? '✓' : ''}
-                              </button>
+                                <option value="have">Have</option>
+                                <option value="requesting">Requesting</option>
+                                <option value="offering">Offering</option>
+                              </select>
                             </td>
                             <td className="mobile-hide-saved">
                               <div className="row-actions">
@@ -2396,7 +2426,7 @@ export default function App() {
                               <th className="mobile-hide-requesting">TCGPlayer Low</th>
                               <th className="mobile-hide-requesting">Line Total</th>
                               <th>Asking For</th>
-                              <th className="mobile-hide-requesting">Requesting</th>
+                              <th className="mobile-hide-requesting">Status</th>
                               <th className="mobile-hide-requesting">Links / Status</th>
                             </tr>
                           </thead>
@@ -2523,15 +2553,16 @@ export default function App() {
                                 />
                               </td>
                               <td className="requesting-cell mobile-hide-requesting">
-                                <button
-                                  type="button"
-                                  className={`requesting-toggle ${card.requesting ? 'active' : ''}`}
-                                  onClick={() => handleRequestingToggle(index, !card.requesting)}
-                                  aria-label={`Requesting ${card.resolvedName}`}
-                                  title={card.requesting ? 'Requesting enabled' : 'Requesting disabled'}
+                                <select
+                                  className="market-status-select"
+                                  value={card.marketStatus || 'have'}
+                                  onChange={(event) => handleMarketStatusChange(index, event.target.value)}
+                                  aria-label={`Status ${card.resolvedName}`}
                                 >
-                                  {card.requesting ? '✓' : ''}
-                                </button>
+                                  <option value="have">Have</option>
+                                  <option value="requesting">Requesting</option>
+                                  <option value="offering">Offering</option>
+                                </select>
                               </td>
                               <td className="mobile-hide-requesting">
                                 <div className="row-actions">
@@ -2606,7 +2637,7 @@ export default function App() {
                               <th className="mobile-hide-requesting">TCGPlayer Low</th>
                               <th className="mobile-hide-requesting">Line Total</th>
                               <th>Asking For</th>
-                              <th className="mobile-hide-requesting">Requesting</th>
+                              <th className="mobile-hide-requesting">Status</th>
                               <th className="mobile-hide-requesting">Links / Status</th>
                             </tr>
                           </thead>
@@ -2729,15 +2760,16 @@ export default function App() {
                                   />
                                 </td>
                                 <td className="requesting-cell mobile-hide-requesting">
-                                  <button
-                                    type="button"
-                                    className={`requesting-toggle ${card.requesting ? 'active' : ''}`}
-                                    onClick={() => handleRequestingToggle(index, !card.requesting)}
-                                    aria-label={`Requesting ${card.resolvedName}`}
-                                    title={card.requesting ? 'Requesting enabled' : 'Requesting disabled'}
+                                  <select
+                                    className="market-status-select"
+                                    value={card.marketStatus || 'have'}
+                                    onChange={(event) => handleMarketStatusChange(index, event.target.value)}
+                                    aria-label={`Status ${card.resolvedName}`}
                                   >
-                                    {card.requesting ? '✓' : ''}
-                                  </button>
+                                    <option value="have">Have</option>
+                                    <option value="requesting">Requesting</option>
+                                    <option value="offering">Offering</option>
+                                  </select>
                                 </td>
                                 <td className="mobile-hide-requesting">
                                   <div className="row-actions">
