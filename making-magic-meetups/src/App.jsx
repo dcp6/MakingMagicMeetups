@@ -939,7 +939,6 @@ export default function App() {
   async function handleCardListUpload(event) {
     event.preventDefault();
     const entries = parseCardEntries(cardInputText);
-    const cards = expandEntries(entries);
 
     if (entries.length === 0) {
       setUploadedCards([]);
@@ -948,38 +947,11 @@ export default function App() {
       return;
     }
 
-    if (!loggedInUser || loggedInUser.role !== 'user') {
-      setCardUploadFeedback('Log in with a user account to save a card list.');
-      return;
-    }
-
-    const authHeader = loginAuthHeader;
-    if (!authHeader) {
-      setCardUploadFeedback('Please log in again to continue.');
-      return;
-    }
-
     setIsCardPriceLoading(true);
     try {
-      const saveResponse = await fetch(`${apiBaseUrl}/api/cards`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: authHeader
-        },
-        body: JSON.stringify({ cards: entries })
-      });
-
-      const savePayload = await saveResponse.json();
-      if (!saveResponse.ok) {
-        setCardUploadFeedback(savePayload.error || 'Could not save your card list.');
-        setIsCardPriceLoading(false);
-        return;
-      }
-
       await priceCards(entries);
       setCardUploadFeedback(
-        `Saved ${cards.length} card${cards.length === 1 ? '' : 's'} to ${loggedInUser.username}'s list.`
+        "Loaded card list for pricing. This is not saved yet. Click 'Save List' to store it permanently."
       );
     } catch (_error) {
       setCardUploadFeedback('Could not save card list right now.');
