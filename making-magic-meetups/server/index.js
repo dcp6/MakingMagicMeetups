@@ -42,6 +42,20 @@ const loginRateLimitWindowMs = process.env.LOGIN_RATE_LIMIT_WINDOW_MS
 const loginRateLimitMaxAttempts = process.env.LOGIN_RATE_LIMIT_MAX_ATTEMPTS
   ? Number(process.env.LOGIN_RATE_LIMIT_MAX_ATTEMPTS)
   : 12;
+const passwordResetTokenTtlMs = process.env.PASSWORD_RESET_TOKEN_TTL_MS
+  ? Number(process.env.PASSWORD_RESET_TOKEN_TTL_MS)
+  : 30 * 60 * 1000;
+const passwordResetRateLimitWindowMs = process.env.PASSWORD_RESET_RATE_LIMIT_WINDOW_MS
+  ? Number(process.env.PASSWORD_RESET_RATE_LIMIT_WINDOW_MS)
+  : 15 * 60 * 1000;
+const passwordResetRateLimitMaxAttempts = process.env.PASSWORD_RESET_RATE_LIMIT_MAX_ATTEMPTS
+  ? Number(process.env.PASSWORD_RESET_RATE_LIMIT_MAX_ATTEMPTS)
+  : 6;
+const passwordResetBaseUrl = String(
+  process.env.PASSWORD_RESET_BASE_URL || 'https://www.makingmagicmeetups.com'
+).trim();
+const resendApiKey = String(process.env.RESEND_API_KEY || '').trim();
+const resetEmailFrom = String(process.env.RESET_EMAIL_FROM || '').trim();
 
 fs.mkdirSync(dbDir, { recursive: true });
 
@@ -105,6 +119,29 @@ db.exec(`
   ON accounts (username)
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    request_ip TEXT,
+    expires_at INTEGER NOT NULL,
+    used_at INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+  );
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS password_reset_tokens_account_id_idx
+  ON password_reset_tokens (account_id)
+`);
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS password_reset_tokens_expires_at_idx
+  ON password_reset_tokens (expires_at)
+`);
+
 const insertUser = db.prepare(`
   INSERT INTO users (email)
   VALUES (?)
@@ -124,6 +161,13 @@ const insertAccount = db.prepare(`
 
 const findAccountForLogin = db.prepare(`
   SELECT id, username, full_name, email, password_hash
+  FROM accounts
+  WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)
+  LIMIT 1
+`);
+
+const findAccountForPasswordReset = db.prepare(`
+  SELECT id, username, email
   FROM accounts
   WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)
   LIMIT 1
@@ -184,6 +228,37 @@ const listAccountsForAdmin = db.prepare(`
   FROM accounts
   ORDER BY id DESC
   LIMIT 1000
+`);
+
+const insertPasswordResetToken = db.prepare(`
+  INSERT INTO password_reset_tokens (account_id, token_hash, request_ip, expires_at, created_at)
+  VALUES (?, ?, ?, ?, ?)
+`);
+
+const markPasswordResetTokensUsedForAccount = db.prepare(`
+  UPDATE password_reset_tokens
+  SET used_at = ?
+  WHERE account_id = ?
+    AND used_at IS NULL
+`);
+
+const findPasswordResetTokenByHash = db.prepare(`
+  SELECT id, account_id, expires_at, used_at
+  FROM password_reset_tokens
+  WHERE token_hash = ?
+  LIMIT 1
+`);
+
+const markPasswordResetTokenUsed = db.prepare(`
+  UPDATE password_reset_tokens
+  SET used_at = ?
+  WHERE id = ?
+    AND used_at IS NULL
+`);
+
+const deleteExpiredPasswordResetTokens = db.prepare(`
+  DELETE FROM password_reset_tokens
+  WHERE expires_at < ?
 `);
 
 db.exec(`
@@ -648,6 +723,10 @@ function verifyPassword(password, storedHash) {
   return legacyHash === normalizedHash;
 }
 
+function hashResetToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
 function authenticateLogin(identifier, password) {
   const normalizedIdentifier = String(identifier || '').trim();
   if (normalizedIdentifier.toLowerCase() === adminUsername.toLowerCase() && password === adminPassword) {
@@ -732,6 +811,7 @@ function ensureLoggedInUser(req, res) {
 }
 
 const loginAttemptStore = new Map();
+const passwordResetAttemptStore = new Map();
 
 function getRequestIp(req) {
   const forwardedFor = String(req.header('x-forwarded-for') || '').split(',')[0].trim();
@@ -740,6 +820,11 @@ function getRequestIp(req) {
 
 function getLoginThrottleKey(req) {
   const identifierRaw = String(req.body?.identifier || req.body?.username || '').trim().toLowerCase();
+  return `${getRequestIp(req)}|${identifierRaw}`;
+}
+
+function getPasswordResetThrottleKey(req) {
+  const identifierRaw = String(req.body?.identifier || '').trim().toLowerCase();
   return `${getRequestIp(req)}|${identifierRaw}`;
 }
 
@@ -769,6 +854,65 @@ function recordLoginAttempt(key, success) {
   }
   current.count += 1;
   loginAttemptStore.set(key, current);
+}
+
+function isPasswordResetRateLimited(key) {
+  const entry = passwordResetAttemptStore.get(key);
+  if (!entry) {
+    return false;
+  }
+  const now = Date.now();
+  if (now - entry.windowStartMs > passwordResetRateLimitWindowMs) {
+    passwordResetAttemptStore.delete(key);
+    return false;
+  }
+  return entry.count >= passwordResetRateLimitMaxAttempts;
+}
+
+function recordPasswordResetAttempt(key, success) {
+  if (success) {
+    passwordResetAttemptStore.delete(key);
+    return;
+  }
+  const now = Date.now();
+  const current = passwordResetAttemptStore.get(key);
+  if (!current || now - current.windowStartMs > passwordResetRateLimitWindowMs) {
+    passwordResetAttemptStore.set(key, { count: 1, windowStartMs: now });
+    return;
+  }
+  current.count += 1;
+  passwordResetAttemptStore.set(key, current);
+}
+
+function buildPasswordResetUrl(rawToken) {
+  const base = passwordResetBaseUrl.replace(/\/+$/, '');
+  return `${base}/#/reset-password?token=${encodeURIComponent(rawToken)}`;
+}
+
+async function sendPasswordResetEmail({ email, username, resetUrl }) {
+  if (!resendApiKey || !resetEmailFrom) {
+    return false;
+  }
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${resendApiKey}`
+    },
+    body: JSON.stringify({
+      from: resetEmailFrom,
+      to: [email],
+      subject: 'Reset your Making Magic Meetups password',
+      text: `Hello ${username || 'there'},\n\nUse this link to reset your password: ${resetUrl}\n\nThis link expires in 30 minutes.\n`,
+      html: `<p>Hello ${username || 'there'},</p><p>Use this link to reset your password:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>This link expires in 30 minutes.</p>`
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error('Email provider request failed');
+  }
+  return true;
 }
 
 function loadMapKitPrivateKey() {
@@ -1045,6 +1189,101 @@ app.post('/api/login', (req, res) => {
     ok: true,
     user
   });
+});
+
+app.post('/api/password-reset/request', async (req, res) => {
+  const throttleKey = getPasswordResetThrottleKey(req);
+  if (isPasswordResetRateLimited(throttleKey)) {
+    return res.status(429).json({ error: 'Too many reset attempts. Try again later.' });
+  }
+
+  const identifier = String(req.body?.identifier || '').trim();
+  if (!identifier) {
+    recordPasswordResetAttempt(throttleKey, false);
+    return res.status(400).json({ error: 'Please provide your username or email.' });
+  }
+
+  const genericResponse = {
+    ok: true,
+    message: 'If an account exists, a password reset link has been sent.'
+  };
+
+  try {
+    const account = findAccountForPasswordReset.get(identifier, identifier);
+    if (!account) {
+      recordPasswordResetAttempt(throttleKey, true);
+      return res.json(genericResponse);
+    }
+
+    const now = Date.now();
+    deleteExpiredPasswordResetTokens.run(now);
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = hashResetToken(rawToken);
+    const expiresAt = now + passwordResetTokenTtlMs;
+
+    const tx = db.transaction(() => {
+      markPasswordResetTokensUsedForAccount.run(now, account.id);
+      insertPasswordResetToken.run(account.id, tokenHash, getRequestIp(req), expiresAt, now);
+    });
+    tx();
+
+    const resetUrl = buildPasswordResetUrl(rawToken);
+    try {
+      await sendPasswordResetEmail({
+        email: account.email,
+        username: account.username,
+        resetUrl
+      });
+    } catch (_emailError) {
+      // Avoid leaking provider failures to clients. Reset tokens remain valid.
+    }
+
+    recordPasswordResetAttempt(throttleKey, true);
+    return res.json(genericResponse);
+  } catch (_error) {
+    recordPasswordResetAttempt(throttleKey, false);
+    return res.status(500).json({ error: 'Could not start password reset.' });
+  }
+});
+
+app.post('/api/password-reset/confirm', (req, res) => {
+  const rawToken = String(req.body?.token || '').trim();
+  const nextPassword = String(req.body?.password || '');
+
+  if (!rawToken) {
+    return res.status(400).json({ error: 'Reset token is required.' });
+  }
+  if (!nextPassword || nextPassword.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  }
+
+  const now = Date.now();
+  deleteExpiredPasswordResetTokens.run(now);
+  const tokenHash = hashResetToken(rawToken);
+  const resetTokenRow = findPasswordResetTokenByHash.get(tokenHash);
+  if (!resetTokenRow) {
+    return res.status(400).json({ error: 'Invalid or expired reset link.' });
+  }
+  if (resetTokenRow.used_at !== null && resetTokenRow.used_at !== undefined) {
+    return res.status(400).json({ error: 'Invalid or expired reset link.' });
+  }
+  if (Number(resetTokenRow.expires_at) <= now) {
+    return res.status(400).json({ error: 'Invalid or expired reset link.' });
+  }
+
+  try {
+    const tx = db.transaction(() => {
+      const passwordHash = hashPassword(nextPassword);
+      updateAccountPassword.run(passwordHash, null, resetTokenRow.account_id);
+      markPasswordResetTokenUsed.run(now, resetTokenRow.id);
+      markPasswordResetTokensUsedForAccount.run(now, resetTokenRow.account_id);
+    });
+    tx();
+    return res.json({ ok: true });
+  } catch (_error) {
+    return res.status(500).json({ error: 'Could not reset password.' });
+  }
 });
 
 app.get('/api/me', (req, res) => {

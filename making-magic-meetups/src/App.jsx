@@ -60,6 +60,14 @@ export default function App() {
   const [accountPasswordConfirm, setAccountPasswordConfirm] = useState('');
   const [accountFeedback, setAccountFeedback] = useState('');
   const [isAccountSubmitting, setIsAccountSubmitting] = useState(false);
+  const [forgotIdentifier, setForgotIdentifier] = useState('');
+  const [forgotFeedback, setForgotFeedback] = useState('');
+  const [isForgotSubmitting, setIsForgotSubmitting] = useState(false);
+  const [resetTokenInput, setResetTokenInput] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetPasswordConfirm, setResetPasswordConfirm] = useState('');
+  const [resetFeedback, setResetFeedback] = useState('');
+  const [isResetSubmitting, setIsResetSubmitting] = useState(false);
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginFeedback, setLoginFeedback] = useState('');
@@ -102,21 +110,38 @@ export default function App() {
 
   useEffect(() => {
     function syncRouteFromHash() {
-      const hash = window.location.hash;
-      if (hash === '#/create-account') {
+      const rawHash = window.location.hash || '#/';
+      const hashWithoutPound = rawHash.startsWith('#') ? rawHash.slice(1) : rawHash;
+      const [pathPart, queryPart = ''] = hashWithoutPound.split('?');
+      const normalizedPath = pathPart.startsWith('/') ? pathPart : `/${pathPart}`;
+
+      if (normalizedPath === '/create-account') {
         setRoute('create-account');
         return;
       }
-      if (hash === '#/dashboard') {
+      if (normalizedPath === '/dashboard') {
         setRoute('dashboard');
         return;
       }
-      if (hash === '#/settings') {
+      if (normalizedPath === '/settings') {
         setRoute('settings');
         return;
       }
-      if (hash === '#/my-cards') {
+      if (normalizedPath === '/my-cards') {
         setRoute('my-cards');
+        return;
+      }
+      if (normalizedPath === '/forgot-password') {
+        setRoute('forgot-password');
+        return;
+      }
+      if (normalizedPath === '/reset-password') {
+        const params = new URLSearchParams(queryPart);
+        const tokenFromHash = String(params.get('token') || '').trim();
+        if (tokenFromHash) {
+          setResetTokenInput(tokenFromHash);
+        }
+        setRoute('reset-password');
         return;
       }
       setRoute('home');
@@ -647,6 +672,80 @@ export default function App() {
       setAccountFeedback('Network error. Please try again.');
     } finally {
       setIsAccountSubmitting(false);
+    }
+  }
+
+  async function handleForgotPasswordRequest(event) {
+    event.preventDefault();
+    setForgotFeedback('');
+    const identifier = forgotIdentifier.trim();
+    if (!identifier) {
+      setForgotFeedback('Please provide your username or email.');
+      return;
+    }
+
+    setIsForgotSubmitting(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/password-reset/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setForgotFeedback(payload.error || 'Could not start password reset.');
+        return;
+      }
+      setForgotFeedback(
+        payload.message || 'If an account exists, a password reset link has been sent.'
+      );
+    } catch (_error) {
+      setForgotFeedback('Could not start password reset.');
+    } finally {
+      setIsForgotSubmitting(false);
+    }
+  }
+
+  async function handleResetPasswordConfirm(event) {
+    event.preventDefault();
+    setResetFeedback('');
+
+    const token = resetTokenInput.trim();
+    if (!token) {
+      setResetFeedback('Reset token is required.');
+      return;
+    }
+    if (!resetPassword || resetPassword.length < 6) {
+      setResetFeedback('Password must be at least 6 characters.');
+      return;
+    }
+    if (resetPassword !== resetPasswordConfirm) {
+      setResetFeedback('Passwords do not match.');
+      return;
+    }
+
+    setIsResetSubmitting(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/password-reset/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          password: resetPassword
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setResetFeedback(payload.error || 'Could not reset password.');
+        return;
+      }
+      setResetPassword('');
+      setResetPasswordConfirm('');
+      setResetFeedback('Password reset complete. You can now log in.');
+    } catch (_error) {
+      setResetFeedback('Could not reset password.');
+    } finally {
+      setIsResetSubmitting(false);
     }
   }
 
@@ -1395,6 +1494,9 @@ export default function App() {
               {isLoginSubmitting ? 'Signing in...' : 'Login'}
             </button>
           </form>
+          <a className="topbar-link" href="#/forgot-password">
+            Forgot password?
+          </a>
           {loginFeedback ? <p className="top-login-feedback">{loginFeedback}</p> : null}
         </>
       )}
@@ -2452,6 +2554,94 @@ export default function App() {
               </button>
             </form>
             {accountFeedback ? <p>{accountFeedback}</p> : null}
+          </section>
+        </main>
+        {loginServiceIndicator}
+      </div>
+    );
+  }
+
+  if (route === 'forgot-password') {
+    return (
+      <div className="page">
+        <header className="topbar">
+          {headerBrand}
+          {headerLogin}
+        </header>
+
+        <main>
+          <section className="join">
+            <p className="kicker">Account Recovery</p>
+            <h1>Forgot password</h1>
+            <p>Enter your username or email to receive a reset link.</p>
+            <form className="join-form" onSubmit={handleForgotPasswordRequest}>
+              <input
+                id="forgot-identifier"
+                type="text"
+                placeholder="username or email"
+                value={forgotIdentifier}
+                onChange={(event) => setForgotIdentifier(event.target.value)}
+                required
+              />
+              <button type="submit" disabled={isForgotSubmitting}>
+                {isForgotSubmitting ? 'Sending...' : 'Send Reset Link'}
+              </button>
+            </form>
+            {forgotFeedback ? <p>{forgotFeedback}</p> : null}
+          </section>
+        </main>
+        {loginServiceIndicator}
+      </div>
+    );
+  }
+
+  if (route === 'reset-password') {
+    return (
+      <div className="page">
+        <header className="topbar">
+          {headerBrand}
+          {headerLogin}
+        </header>
+
+        <main>
+          <section className="join">
+            <p className="kicker">Account Recovery</p>
+            <h1>Reset password</h1>
+            <p>Enter the reset token and your new password.</p>
+            <form className="join-form" onSubmit={handleResetPasswordConfirm}>
+              <input
+                id="reset-token"
+                type="text"
+                placeholder="Reset token"
+                value={resetTokenInput}
+                onChange={(event) => setResetTokenInput(event.target.value)}
+                required
+              />
+              <div className="create-password-row">
+                <input
+                  id="reset-password"
+                  type="password"
+                  placeholder="New password"
+                  value={resetPassword}
+                  onChange={(event) => setResetPassword(event.target.value)}
+                  required
+                  minLength={6}
+                />
+                <input
+                  id="reset-password-confirm"
+                  type="password"
+                  placeholder="Confirm new password"
+                  value={resetPasswordConfirm}
+                  onChange={(event) => setResetPasswordConfirm(event.target.value)}
+                  required
+                  minLength={6}
+                />
+              </div>
+              <button type="submit" disabled={isResetSubmitting}>
+                {isResetSubmitting ? 'Updating...' : 'Reset Password'}
+              </button>
+            </form>
+            {resetFeedback ? <p>{resetFeedback}</p> : null}
           </section>
         </main>
         {loginServiceIndicator}
