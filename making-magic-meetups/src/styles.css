@@ -442,6 +442,66 @@ h1 {
   cursor: pointer;
 }
 
+.notice {
+  margin: 0.65rem 0 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.8rem;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-900);
+}
+
+.notice.subtle {
+  color: var(--text-700);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.action-button {
+  min-height: 38px;
+  padding: 0 0.95rem;
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 12px 26px rgba(15, 33, 53, 0.12);
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+
+.action-button.primary {
+  border-color: rgba(0, 0, 0, 0.04);
+  background: linear-gradient(120deg, var(--sun-400), #ff9865);
+  color: #1b2f45;
+}
+
+.action-button.secondary {
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-900);
+}
+
+.action-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 30px rgba(15, 33, 53, 0.16);
+}
+
+.action-button:active {
+  transform: translateY(0);
+  box-shadow: 0 10px 18px rgba(15, 33, 53, 0.12);
+}
+
+.action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  filter: grayscale(0.2);
+  box-shadow: none;
+  transform: none;
+}
+
+.action-button:focus-visible {
+  outline: 2px solid var(--sun-400);
+  outline-offset: 2px;
+}
+
 .card-upload-results h2 {
   margin: 0.75rem 0 0.4rem;
   font-size: 1rem;

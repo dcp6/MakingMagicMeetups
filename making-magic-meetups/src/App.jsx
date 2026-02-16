@@ -67,6 +67,7 @@ export default function App() {
   const [cardAskingTotal, setCardAskingTotal] = useState(0);
   const [cardUploadFeedback, setCardUploadFeedback] = useState('');
   const [isCardPriceLoading, setIsCardPriceLoading] = useState(false);
+  const [isCardsSaving, setIsCardsSaving] = useState(false);
   const [versionOptionsByKey, setVersionOptionsByKey] = useState({});
   const [versionLoadingKey, setVersionLoadingKey] = useState(null);
   const [cardSortMode, setCardSortMode] = useState('upload');
@@ -1217,6 +1218,10 @@ export default function App() {
       return;
     }
 
+    if (isCardsSaving) {
+      return;
+    }
+
     const entries = uploadedCards
       .map((card) => ({
         cardName: String(card.resolvedName || card.inputName || '').trim(),
@@ -1242,6 +1247,7 @@ export default function App() {
       return;
     }
 
+    setIsCardsSaving(true);
     try {
       const saveResponse = await fetch(`${apiBaseUrl}/api/cards`, {
         method: 'POST',
@@ -1259,10 +1265,12 @@ export default function App() {
       }
 
       setCardUploadFeedback(
-        `Saved ${entries.length} unique card${entries.length === 1 ? '' : 's'} (qty + asking price).`
+        `Saved ${entries.length} unique card${entries.length === 1 ? '' : 's'} to My Cards.`
       );
     } catch (_error) {
       setCardUploadFeedback('Could not save card list right now.');
+    } finally {
+      setIsCardsSaving(false);
     }
   }
 
@@ -1625,14 +1633,19 @@ export default function App() {
                   />
                   <button type="submit">Upload Card List</button>
                 </form>
-                {cardUploadFeedback ? <p>{cardUploadFeedback}</p> : null}
-                {isCardPriceLoading ? <p>Loading prices from Scryfall...</p> : null}
+                {cardUploadFeedback ? <p className="notice">{cardUploadFeedback}</p> : null}
+                {isCardPriceLoading ? <p className="notice subtle">Loading prices from Scryfall...</p> : null}
                 {uploadedCards.length > 0 ? (
                   <div className="card-upload-results">
                     <h2>Uploaded Cards</h2>
                     <div className="dashboard-actions">
-                      <button type="button" onClick={handleSaveList}>
-                        Save List
+                      <button
+                        type="button"
+                        className="action-button primary"
+                        onClick={handleSaveList}
+                        disabled={isCardPriceLoading || isCardsSaving}
+                      >
+                        {isCardsSaving ? 'Saving...' : 'Save To My Cards'}
                       </button>
                       <label className="sort-control">
                         Sort:{' '}
@@ -1834,11 +1847,21 @@ export default function App() {
               <>
                 <p>This is your saved card database (permanent storage). You can edit and save.</p>
                 <div className="dashboard-actions">
-                  <button type="button" onClick={() => loadUserCardsFromApi(loginAuthHeader)}>
-                    Reload From Database
+                  <button
+                    type="button"
+                    className="action-button secondary"
+                    onClick={() => loadUserCardsFromApi(loginAuthHeader)}
+                    disabled={isCardPriceLoading || isCardsSaving}
+                  >
+                    Refresh
                   </button>
-                  <button type="button" onClick={handleSaveList}>
-                    Save Changes
+                  <button
+                    type="button"
+                    className="action-button primary"
+                    onClick={handleSaveList}
+                    disabled={isCardPriceLoading || isCardsSaving || uploadedCards.length === 0}
+                  >
+                    {isCardsSaving ? 'Saving...' : 'Save'}
                   </button>
                   <label className="sort-control">
                     Sort:{' '}
@@ -1853,8 +1876,8 @@ export default function App() {
                     </select>
                   </label>
                 </div>
-                {cardUploadFeedback ? <p>{cardUploadFeedback}</p> : null}
-                {isCardPriceLoading ? <p>Loading prices from Scryfall...</p> : null}
+                {cardUploadFeedback ? <p className="notice">{cardUploadFeedback}</p> : null}
+                {isCardPriceLoading ? <p className="notice subtle">Loading prices from Scryfall...</p> : null}
                 {uploadedCards.length > 0 ? (
                   <div className="card-upload-results">
                     <h2>Saved Cards</h2>
