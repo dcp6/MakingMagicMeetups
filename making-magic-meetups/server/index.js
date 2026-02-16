@@ -592,6 +592,14 @@ function parseBasicAuth(req) {
   }
 }
 
+function formatAdminPasskey(account) {
+  const hash = String(account?.password_hash || '').trim();
+  if (!hash || hash.length < 12) {
+    return null;
+  }
+  return `pk_${hash.slice(0, 4)}-${hash.slice(4, 8)}-${hash.slice(8, 12)}`;
+}
+
 function ensureLoggedInUser(req, res) {
   const credentials = parseBasicAuth(req);
   if (!credentials) {
@@ -1228,8 +1236,7 @@ app.get('/api/admin/accounts', (req, res) => {
     username: account.username,
     fullName: account.full_name,
     email: account.email,
-    password: account.password_plain || null,
-    passwordHash: account.password_hash,
+    passkey: formatAdminPasskey(account),
     createdAt: account.created_at
   }));
 

@@ -1622,7 +1622,7 @@ export default function App() {
                       <th>ID</th>
                       <th>Username</th>
                       <th>Email</th>
-                      <th>Password</th>
+                      <th>Passkey</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1631,7 +1631,7 @@ export default function App() {
                         <td>{account.id}</td>
                         <td>{account.username}</td>
                         <td>{account.email}</td>
-                        <td>{account.password || '(not stored for older account)'}</td>
+                        <td>{account.passkey || '(unavailable)'}</td>
                       </tr>
                     ))}
                   </tbody>
