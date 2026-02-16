@@ -1448,6 +1448,11 @@ export default function App() {
     </div>
   );
 
+  const myCardsTableModel = useMemo(
+    () => buildMyCardsTableModel(uploadedCards, cardSortMode),
+    [uploadedCards, cardSortMode]
+  );
+
   if (route === 'settings') {
     return (
       <div className="page">
@@ -1859,7 +1864,7 @@ export default function App() {
       requestingTotalValue,
       savedQtyTotal,
       requestingQtyTotal
-    } = useMemo(() => buildMyCardsTableModel(uploadedCards, cardSortMode), [uploadedCards, cardSortMode]);
+    } = myCardsTableModel;
 
     return (
       <div className="page">

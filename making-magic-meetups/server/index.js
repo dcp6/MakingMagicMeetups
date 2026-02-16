@@ -661,8 +661,8 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    // Safety net: accept either apex or www for the production domain.
-    if (/^https:\/\/(www\.)?makingmagicmeetups\.com$/i.test(origin)) {
+    // Safety net: accept production domain and subdomains (with optional explicit port).
+    if (/^https:\/\/([a-z0-9-]+\.)?makingmagicmeetups\.com(?::\d+)?$/i.test(origin)) {
       return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));
