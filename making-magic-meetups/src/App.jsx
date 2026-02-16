@@ -879,11 +879,10 @@ export default function App() {
           card.askingQuantity === null || card.askingQuantity === undefined
             ? null
             : Number(card.askingQuantity);
-        const maxQuantity = Math.max(0, quantity);
         const askingQuantity =
           parsedAskingQuantity === null || !Number.isFinite(parsedAskingQuantity)
             ? null
-            : Math.max(0, Math.min(maxQuantity, Math.floor(parsedAskingQuantity)));
+            : Math.max(0, Math.floor(parsedAskingQuantity));
 
         return {
           cardName,
@@ -909,11 +908,10 @@ export default function App() {
     const pricedEntries = pricedUnique.map((priced, index) => {
       const rawQuantity = Number(entries[index]?.quantity);
       const quantity = Number.isFinite(rawQuantity) && rawQuantity >= 0 ? Math.floor(rawQuantity) : 1;
-      const maxQuantity = Math.max(0, quantity);
       const incomingAskingQuantity = Number(entries[index]?.askingQuantity);
       const askingQuantity =
         Number.isFinite(incomingAskingQuantity) && incomingAskingQuantity >= 0
-          ? Math.max(0, Math.min(maxQuantity, Math.floor(incomingAskingQuantity)))
+          ? Math.max(0, Math.floor(incomingAskingQuantity))
           : quantity;
       const unitUsd = parseUsdPrice(priced.tcgLow);
       const scryfallId = priced.scryfallId ?? entries[index]?.scryfallId ?? null;
@@ -1064,13 +1062,7 @@ export default function App() {
           return card;
         }
         const lineTotalUsd = card.unitUsd !== null ? card.unitUsd * quantity : null;
-        const currentAskingQuantity = Number(card.askingQuantity);
-        const maxQuantity = Math.max(0, quantity);
-        const askingQuantity =
-          Number.isFinite(currentAskingQuantity) && currentAskingQuantity >= 0
-            ? Math.max(0, Math.min(maxQuantity, Math.floor(currentAskingQuantity)))
-            : quantity;
-        return { ...card, quantity, askingQuantity, lineTotalUsd };
+        return { ...card, quantity, lineTotalUsd };
       });
       setCardCostTotal(recomputeCostTotal(next));
 
@@ -1123,9 +1115,8 @@ export default function App() {
         if (i !== index) {
           return card;
         }
-        const maxQuantity = Math.max(0, Number(card.quantity) || 0);
         const askingQuantity =
-          Number.isFinite(raw) && raw >= 0 ? Math.max(0, Math.min(maxQuantity, Math.floor(raw))) : 0;
+          Number.isFinite(raw) && raw >= 0 ? Math.max(0, Math.floor(raw)) : 0;
         return {
           ...card,
           askingQuantity
@@ -2253,7 +2244,6 @@ export default function App() {
                                   className="qty-input"
                                   type="number"
                                   min={0}
-                                  max={Math.max(0, Number(card.quantity) || 0)}
                                   step={1}
                                   value={
                                     card.askingQuantity === null || card.askingQuantity === undefined

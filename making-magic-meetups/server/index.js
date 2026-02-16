@@ -1134,7 +1134,7 @@ app.post('/api/cards', (req, res) => {
       const normalizedAskQty =
         entry.askingQuantity === null || entry.askingQuantity === undefined
           ? entry.quantity
-          : Math.max(0, Math.min(entry.quantity, Math.floor(Number(entry.askingQuantity))));
+          : Math.max(0, Math.floor(Number(entry.askingQuantity)));
       const upsert = saveMode === 'add' ? upsertMyCardAdd : upsertMyCardReplace;
       upsert.run(
         accountId,
