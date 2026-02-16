@@ -396,7 +396,7 @@ const clearMyCards = db.prepare(`
   WHERE account_id = ?
 `);
 
-const upsertMyCard = db.prepare(`
+const upsertMyCardReplace = db.prepare(`
   INSERT INTO my_cards (
     account_id,
     card_name,
@@ -425,6 +425,40 @@ const upsertMyCard = db.prepare(`
     image_normal = excluded.image_normal,
     image_small_back = excluded.image_small_back,
     image_normal_back = excluded.image_normal_back,
+    updated_at = CURRENT_TIMESTAMP
+`);
+
+const upsertMyCardAdd = db.prepare(`
+  INSERT INTO my_cards (
+    account_id,
+    card_name,
+    quantity,
+    asking_quantity,
+    asking_price_cents,
+    scryfall_id,
+    set_code,
+    set_name,
+    collector_number,
+    image_small,
+    image_normal,
+    image_small_back,
+    image_normal_back
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(account_id, card_name) DO UPDATE SET
+    quantity = my_cards.quantity + excluded.quantity,
+    asking_quantity =
+      COALESCE(my_cards.asking_quantity, my_cards.quantity) +
+      COALESCE(excluded.asking_quantity, excluded.quantity),
+    asking_price_cents = COALESCE(excluded.asking_price_cents, my_cards.asking_price_cents),
+    scryfall_id = COALESCE(excluded.scryfall_id, my_cards.scryfall_id),
+    set_code = COALESCE(excluded.set_code, my_cards.set_code),
+    set_name = COALESCE(excluded.set_name, my_cards.set_name),
+    collector_number = COALESCE(excluded.collector_number, my_cards.collector_number),
+    image_small = COALESCE(excluded.image_small, my_cards.image_small),
+    image_normal = COALESCE(excluded.image_normal, my_cards.image_normal),
+    image_small_back = COALESCE(excluded.image_small_back, my_cards.image_small_back),
+    image_normal_back = COALESCE(excluded.image_normal_back, my_cards.image_normal_back),
     updated_at = CURRENT_TIMESTAMP
 `);
 
@@ -966,6 +1000,8 @@ app.post('/api/cards', (req, res) => {
   }
 
   const submittedCards = Array.isArray(req.body?.cards) ? req.body.cards : [];
+  const saveModeRaw = String(req.body?.mode || '').trim().toLowerCase();
+  const saveMode = saveModeRaw === 'add' ? 'add' : 'replace';
   const cardMap = new Map();
 
   for (const submitted of submittedCards) {
@@ -1066,7 +1102,8 @@ app.post('/api/cards', (req, res) => {
         entry.askingQuantity === null || entry.askingQuantity === undefined
           ? entry.quantity
           : Math.max(1, Math.min(entry.quantity, Math.floor(Number(entry.askingQuantity))));
-      upsertMyCard.run(
+      const upsert = saveMode === 'add' ? upsertMyCardAdd : upsertMyCardReplace;
+      upsert.run(
         accountId,
         entry.cardName,
         entry.quantity,

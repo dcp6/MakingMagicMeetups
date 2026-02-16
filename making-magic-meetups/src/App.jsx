@@ -1206,7 +1206,7 @@ export default function App() {
     );
   }
 
-  async function handleSaveList() {
+  async function handleSaveList(options = {}) {
     if (!loggedInUser || loggedInUser.role !== 'user') {
       setCardUploadFeedback('Log in with a user account to save a card list.');
       return;
@@ -1247,6 +1247,7 @@ export default function App() {
       return;
     }
 
+    const mode = String(options.mode || '').trim().toLowerCase() === 'add' ? 'add' : 'replace';
     setIsCardsSaving(true);
     try {
       const saveResponse = await fetch(`${apiBaseUrl}/api/cards`, {
@@ -1255,7 +1256,7 @@ export default function App() {
           'Content-Type': 'application/json',
           Authorization: authHeader
         },
-        body: JSON.stringify({ cards: entries })
+        body: JSON.stringify({ cards: entries, mode })
       });
 
       const payload = await saveResponse.json();
@@ -1265,7 +1266,9 @@ export default function App() {
       }
 
       setCardUploadFeedback(
-        `Saved ${entries.length} unique card${entries.length === 1 ? '' : 's'} to My Cards.`
+        mode === 'add'
+          ? `Added ${entries.length} unique card${entries.length === 1 ? '' : 's'} to My Cards.`
+          : `Saved ${entries.length} unique card${entries.length === 1 ? '' : 's'} to My Cards.`
       );
     } catch (_error) {
       setCardUploadFeedback('Could not save card list right now.');
@@ -1642,7 +1645,7 @@ export default function App() {
                       <button
                         type="button"
                         className="action-button primary"
-                        onClick={handleSaveList}
+                        onClick={() => handleSaveList({ mode: 'add' })}
                         disabled={isCardPriceLoading || isCardsSaving}
                       >
                         {isCardsSaving ? 'Saving...' : 'Save To My Cards'}
@@ -1859,7 +1862,7 @@ export default function App() {
                   <button
                     type="button"
                     className="action-button primary"
-                    onClick={handleSaveList}
+                    onClick={() => handleSaveList({ mode: 'replace' })}
                     disabled={isCardPriceLoading || isCardsSaving || uploadedCards.length === 0}
                   >
                     {isCardsSaving ? 'Saving...' : 'Save'}
