@@ -564,7 +564,9 @@ h1 {
 }
 
 .requesting-toggle {
-  width: clamp(1rem, 20%, 1.25rem);
+  width: 20%;
+  min-width: 0.95rem;
+  max-width: 1.15rem;
   aspect-ratio: 1 / 1;
   margin: 0 auto;
   border: 1px solid var(--stroke);
