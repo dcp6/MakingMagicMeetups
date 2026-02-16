@@ -125,7 +125,7 @@ const insertAccount = db.prepare(`
 const findAccountForLogin = db.prepare(`
   SELECT id, username, full_name, email, password_hash
   FROM accounts
-  WHERE username = ? OR email = ?
+  WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)
   LIMIT 1
 `);
 
@@ -580,7 +580,8 @@ function verifyPassword(password, storedHash) {
 }
 
 function authenticateLogin(identifier, password) {
-  if (identifier === adminUsername.toLowerCase() && password === adminPassword) {
+  const normalizedIdentifier = String(identifier || '').trim();
+  if (normalizedIdentifier.toLowerCase() === adminUsername.toLowerCase() && password === adminPassword) {
     return {
       id: 0,
       username: adminUsername,
@@ -590,7 +591,7 @@ function authenticateLogin(identifier, password) {
     };
   }
 
-  const account = findAccountForLogin.get(identifier, identifier);
+  const account = findAccountForLogin.get(normalizedIdentifier, normalizedIdentifier);
   if (!account || !verifyPassword(password, account.password_hash)) {
     return null;
   }
@@ -626,7 +627,7 @@ function parseBasicAuth(req) {
     if (separatorIndex === -1) {
       return null;
     }
-    const identifier = decoded.slice(0, separatorIndex).trim().toLowerCase();
+    const identifier = decoded.slice(0, separatorIndex).trim();
     const password = decoded.slice(separatorIndex + 1);
     if (!identifier || !password) {
       return null;
@@ -912,14 +913,14 @@ app.post('/api/users', (req, res) => {
 });
 
 app.post('/api/accounts', (req, res) => {
-  const username = String(req.body?.username || '').trim().toLowerCase();
+  const username = String(req.body?.username || '').trim();
   const fullName = String(req.body?.fullName || '').trim();
   const email = String(req.body?.email || '').trim().toLowerCase();
   const password = String(req.body?.password || '');
 
-  if (!username || !/^[a-z0-9_]{3,24}$/.test(username)) {
+  if (!username || !/^[A-Za-z0-9_]{3,24}$/.test(username)) {
     return res.status(400).json({
-      error: 'Username must be 3-24 chars and use lowercase letters, numbers, or underscores.'
+      error: 'Username must be 3-24 chars and use letters, numbers, or underscores.'
     });
   }
 
