@@ -1041,7 +1041,6 @@ app.post('/api/cards', (req, res) => {
   }
 
   const saveCards = db.transaction((accountId, cardEntries) => {
-    clearMyCards.run(accountId);
     for (const entry of cardEntries) {
       const normalizedAskQty =
         entry.askingQuantity === null || entry.askingQuantity === undefined
