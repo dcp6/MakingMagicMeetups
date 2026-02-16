@@ -872,15 +872,18 @@ export default function App() {
           card.askingPriceCents === null || card.askingPriceCents === undefined
             ? null
             : Number(card.askingPriceCents);
-        const quantity = Number(card.quantity) || 1;
+        const parsedQuantity = Number(card.quantity);
+        const quantity =
+          Number.isFinite(parsedQuantity) && parsedQuantity >= 0 ? Math.floor(parsedQuantity) : 1;
         const parsedAskingQuantity =
           card.askingQuantity === null || card.askingQuantity === undefined
             ? null
             : Number(card.askingQuantity);
+        const maxQuantity = Math.max(0, quantity);
         const askingQuantity =
           parsedAskingQuantity === null || !Number.isFinite(parsedAskingQuantity)
             ? null
-            : Math.max(1, Math.min(quantity, Math.floor(parsedAskingQuantity)));
+            : Math.max(0, Math.min(maxQuantity, Math.floor(parsedAskingQuantity)));
 
         return {
           cardName,
@@ -904,11 +907,13 @@ export default function App() {
   async function priceCards(entries) {
     const pricedUnique = await Promise.all(entries.map((entry) => fetchCardFromScryfall(entry)));
     const pricedEntries = pricedUnique.map((priced, index) => {
-      const quantity = entries[index]?.quantity ?? 1;
+      const rawQuantity = Number(entries[index]?.quantity);
+      const quantity = Number.isFinite(rawQuantity) && rawQuantity >= 0 ? Math.floor(rawQuantity) : 1;
+      const maxQuantity = Math.max(0, quantity);
       const incomingAskingQuantity = Number(entries[index]?.askingQuantity);
       const askingQuantity =
-        Number.isFinite(incomingAskingQuantity) && incomingAskingQuantity > 0
-          ? Math.max(1, Math.min(quantity, Math.floor(incomingAskingQuantity)))
+        Number.isFinite(incomingAskingQuantity) && incomingAskingQuantity >= 0
+          ? Math.max(0, Math.min(maxQuantity, Math.floor(incomingAskingQuantity)))
           : quantity;
       const unitUsd = parseUsdPrice(priced.tcgLow);
       const scryfallId = priced.scryfallId ?? entries[index]?.scryfallId ?? null;
@@ -989,7 +994,10 @@ export default function App() {
       entries.length > 0
         ? entries.map((entry) => ({
             cardName: String(entry.cardName || entry.card_name || '').trim(),
-            quantity: Number(entry.quantity) || 1,
+            quantity:
+              Number.isFinite(Number(entry.quantity)) && Number(entry.quantity) >= 0
+                ? Math.floor(Number(entry.quantity))
+                : 1,
             requesting: Boolean(entry.requesting),
             askingQuantity:
               entry.askingQuantity === null || entry.askingQuantity === undefined
@@ -1048,7 +1056,7 @@ export default function App() {
 
   function handleQuantityChange(index, nextValue) {
     const raw = Number(nextValue);
-    const quantity = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1;
+    const quantity = Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 0;
 
     setUploadedCards((previous) => {
       const next = previous.map((card, i) => {
@@ -1057,9 +1065,10 @@ export default function App() {
         }
         const lineTotalUsd = card.unitUsd !== null ? card.unitUsd * quantity : null;
         const currentAskingQuantity = Number(card.askingQuantity);
+        const maxQuantity = Math.max(0, quantity);
         const askingQuantity =
-          Number.isFinite(currentAskingQuantity) && currentAskingQuantity > 0
-            ? Math.max(1, Math.min(quantity, Math.floor(currentAskingQuantity)))
+          Number.isFinite(currentAskingQuantity) && currentAskingQuantity >= 0
+            ? Math.max(0, Math.min(maxQuantity, Math.floor(currentAskingQuantity)))
             : quantity;
         return { ...card, quantity, askingQuantity, lineTotalUsd };
       });
@@ -1114,9 +1123,9 @@ export default function App() {
         if (i !== index) {
           return card;
         }
-        const maxQuantity = Math.max(1, Number(card.quantity) || 1);
+        const maxQuantity = Math.max(0, Number(card.quantity) || 0);
         const askingQuantity =
-          Number.isFinite(raw) && raw > 0 ? Math.max(1, Math.min(maxQuantity, Math.floor(raw))) : 1;
+          Number.isFinite(raw) && raw >= 0 ? Math.max(0, Math.min(maxQuantity, Math.floor(raw))) : 0;
         return {
           ...card,
           askingQuantity
@@ -1813,7 +1822,7 @@ export default function App() {
                               <input
                                 className="qty-input"
                                 type="number"
-                                min={1}
+                                min={0}
                                 step={1}
                                 value={card.quantity}
                                 onChange={(event) => handleQuantityChange(index, event.target.value)}
@@ -2231,7 +2240,7 @@ export default function App() {
                                 <input
                                   className="qty-input"
                                   type="number"
-                                  min={1}
+                                  min={0}
                                   step={1}
                                   value={card.quantity}
                                   onChange={(event) =>
@@ -2243,12 +2252,12 @@ export default function App() {
                                 <input
                                   className="qty-input"
                                   type="number"
-                                  min={1}
-                                  max={Math.max(1, Number(card.quantity) || 1)}
+                                  min={0}
+                                  max={Math.max(0, Number(card.quantity) || 0)}
                                   step={1}
                                   value={
                                     card.askingQuantity === null || card.askingQuantity === undefined
-                                      ? Math.max(1, Number(card.quantity) || 1)
+                                      ? Math.max(0, Number(card.quantity) || 0)
                                       : card.askingQuantity
                                   }
                                   onChange={(event) =>

@@ -1051,13 +1051,15 @@ app.post('/api/cards', (req, res) => {
     } else if (submitted && typeof submitted === 'object') {
       cardName = String(submitted.cardName || submitted.name || '').trim();
       quantity = Number(submitted.quantity);
-      if (!Number.isFinite(quantity) || quantity <= 0) {
+      if (!Number.isFinite(quantity) || quantity < 0) {
         quantity = 1;
+      } else {
+        quantity = Math.floor(quantity);
       }
       requesting = submitted.requesting ? 1 : 0;
       if (submitted.askingQuantity !== null && submitted.askingQuantity !== undefined) {
         const rawAskQty = Number(submitted.askingQuantity);
-        if (Number.isFinite(rawAskQty) && rawAskQty > 0) {
+        if (Number.isFinite(rawAskQty) && rawAskQty >= 0) {
           askingQuantity = Math.floor(rawAskQty);
         }
       }
@@ -1132,7 +1134,7 @@ app.post('/api/cards', (req, res) => {
       const normalizedAskQty =
         entry.askingQuantity === null || entry.askingQuantity === undefined
           ? entry.quantity
-          : Math.max(1, Math.min(entry.quantity, Math.floor(Number(entry.askingQuantity))));
+          : Math.max(0, Math.min(entry.quantity, Math.floor(Number(entry.askingQuantity))));
       const upsert = saveMode === 'add' ? upsertMyCardAdd : upsertMyCardReplace;
       upsert.run(
         accountId,
