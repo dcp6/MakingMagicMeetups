@@ -849,6 +849,11 @@ export default function App() {
   function buildCardEntriesForSave(cards) {
     return cards
       .map((card) => {
+        // Do not save unresolved lookups.
+        if (card.error || !card.scryfallId) {
+          return null;
+        }
+
         const cardName = String(card.resolvedName || card.inputName || '').trim();
         if (!cardName) {
           return null;
@@ -1209,9 +1214,10 @@ export default function App() {
     }
 
     const entries = buildCardEntriesForSave(uploadedCards);
+    const skippedCount = uploadedCards.length - entries.length;
 
     if (entries.length === 0) {
-      setCardUploadFeedback('No cards to save.');
+      setCardUploadFeedback('No valid cards to save. Cards not found were skipped.');
       return;
     }
 
@@ -1234,9 +1240,11 @@ export default function App() {
       }
 
       setCardUploadFeedback(
-        mode === 'add'
-          ? `Added ${entries.length} unique card${entries.length === 1 ? '' : 's'} to My Cards.`
-          : `Saved ${entries.length} unique card${entries.length === 1 ? '' : 's'} to My Cards.`
+        `${
+          mode === 'add' ? 'Added' : 'Saved'
+        } ${entries.length} unique card${entries.length === 1 ? '' : 's'} to My Cards.${
+          skippedCount > 0 ? ` Skipped ${skippedCount} card${skippedCount === 1 ? '' : 's'} not found.` : ''
+        }`
       );
       setCardInputText('');
       // Clear staging rows after each save; user can upload again for the next action.
