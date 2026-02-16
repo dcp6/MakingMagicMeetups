@@ -1683,13 +1683,13 @@ export default function App() {
                       <thead>
                         <tr>
                           <th>Pic</th>
-                          <th>Card</th>
-                          <th>Version</th>
+                          <th className="mobile-hide-saved">Card</th>
+                          <th className="mobile-hide-saved">Version</th>
                           <th>Qty</th>
                           <th>TCGPlayer Low</th>
-                          <th>Line Total</th>
+                          <th className="mobile-hide-saved">Line Total</th>
                           <th>Requesting</th>
-                          <th>Links / Status</th>
+                          <th className="mobile-hide-saved">Links / Status</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1724,8 +1724,8 @@ export default function App() {
                                 </div>
                               ) : null}
                             </td>
-                            <td>{card.resolvedName}</td>
-                            <td>
+                            <td className="mobile-hide-saved">{card.resolvedName}</td>
+                            <td className="mobile-hide-saved">
                               <button
                                 type="button"
                                 className="version-button"
@@ -1777,7 +1777,7 @@ export default function App() {
                               />
                             </td>
                             <td>{card.tcgLow}</td>
-                            <td>
+                            <td className="mobile-hide-saved">
                               {card.lineTotalUsd !== null
                                 ? `$${card.lineTotalUsd.toFixed(2)}`
                                 : 'N/A'}
@@ -2022,7 +2022,7 @@ export default function App() {
                                 {card.requesting ? '✓' : ''}
                               </button>
                             </td>
-                            <td>
+                            <td className="mobile-hide-saved">
                               <div className="row-actions">
                                 {card.tcgUrl ? (
                                   <a href={card.tcgUrl} target="_blank" rel="noreferrer">
@@ -2080,14 +2080,14 @@ export default function App() {
                           <thead>
                             <tr>
                               <th>Pic</th>
-                              <th>Card</th>
-                              <th>Version</th>
+                              <th className="mobile-hide-requesting">Card</th>
+                              <th className="mobile-hide-requesting">Version</th>
                               <th>Qty</th>
-                              <th>TCGPlayer Low</th>
-                              <th>Line Total</th>
+                              <th className="mobile-hide-requesting">TCGPlayer Low</th>
+                              <th className="mobile-hide-requesting">Line Total</th>
                               <th>Asking For</th>
-                              <th>Requesting</th>
-                              <th>Links / Status</th>
+                              <th className="mobile-hide-requesting">Requesting</th>
+                              <th className="mobile-hide-requesting">Links / Status</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -2123,8 +2123,8 @@ export default function App() {
                                   </div>
                                 ) : null}
                               </td>
-                              <td>{card.resolvedName}</td>
-                              <td>
+                              <td className="mobile-hide-requesting">{card.resolvedName}</td>
+                              <td className="mobile-hide-requesting">
                                 <button
                                   type="button"
                                   className="version-button"
@@ -2177,8 +2177,8 @@ export default function App() {
                                   }
                                 />
                               </td>
-                              <td>{card.tcgLow}</td>
-                              <td>
+                              <td className="mobile-hide-requesting">{card.tcgLow}</td>
+                              <td className="mobile-hide-requesting">
                                 {card.lineTotalUsd !== null
                                   ? `$${card.lineTotalUsd.toFixed(2)}`
                                   : 'N/A'}
@@ -2196,7 +2196,7 @@ export default function App() {
                                   onBlur={() => handleRequestingAskingPriceBlur(index)}
                                 />
                               </td>
-                              <td className="requesting-cell">
+                              <td className="requesting-cell mobile-hide-requesting">
                                 <button
                                   type="button"
                                   className={`requesting-toggle ${card.requesting ? 'active' : ''}`}
@@ -2207,7 +2207,7 @@ export default function App() {
                                   {card.requesting ? '✓' : ''}
                                 </button>
                               </td>
-                              <td>
+                              <td className="mobile-hide-requesting">
                                 <div className="row-actions">
                                   {card.tcgUrl ? (
                                     <a href={card.tcgUrl} target="_blank" rel="noreferrer">

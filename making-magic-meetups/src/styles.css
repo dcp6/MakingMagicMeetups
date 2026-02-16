@@ -897,4 +897,23 @@ h1 {
     min-width: 1.15rem;
     max-width: 1.2rem;
   }
+
+  .join .price-table {
+    min-width: 0;
+  }
+
+  .mobile-hide-saved,
+  .mobile-hide-requesting {
+    display: none;
+  }
+
+  .requesting-cell {
+    width: 2.4rem;
+  }
+
+  .requesting-toggle {
+    width: 1.05rem;
+    min-width: 1.05rem;
+    max-width: 1.05rem;
+  }
 }
