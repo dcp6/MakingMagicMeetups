@@ -92,6 +92,9 @@ export default function App() {
   const [isStoreSearching, setIsStoreSearching] = useState(false);
   const [isPreferredStoreSaving, setIsPreferredStoreSaving] = useState(false);
   const [isMapKitReady, setIsMapKitReady] = useState(false);
+  const [dashboardMobileSelectedCardKey, setDashboardMobileSelectedCardKey] = useState('');
+  const [savedMobileSelectedCardKey, setSavedMobileSelectedCardKey] = useState('');
+  const [requestingMobileSelectedCardKey, setRequestingMobileSelectedCardKey] = useState('');
   const [loginServiceStatus, setLoginServiceStatus] = useState('unknown');
   const [loginServiceLastCheckedAt, setLoginServiceLastCheckedAt] = useState(null);
   const [loginServiceLastStatusCode, setLoginServiceLastStatusCode] = useState(null);
@@ -593,6 +596,9 @@ export default function App() {
     setUploadedCards([]);
     setCardInputText('');
     setShowingJustSavedCards(false);
+    setDashboardMobileSelectedCardKey('');
+    setSavedMobileSelectedCardKey('');
+    setRequestingMobileSelectedCardKey('');
     setLoginIdentifier('');
     setLoginPassword('');
     setLoginFeedback('Signed out.');
@@ -1004,6 +1010,7 @@ export default function App() {
     event.preventDefault();
     // Every upload action starts fresh so stale "Just Saved" rows do not linger.
     setShowingJustSavedCards(false);
+    setDashboardMobileSelectedCardKey('');
     setUploadedCards([]);
     setCardCostTotal(0);
     const entries = parseCardEntries(cardInputText);
@@ -1436,6 +1443,41 @@ export default function App() {
     [uploadedCards, cardSortMode]
   );
 
+  function renderMobileImageOnlyCards(pairs, selectedKey, setSelectedKey) {
+    return (
+      <div className="mobile-image-only-grid" role="list">
+        {pairs.map(({ card, index }) => {
+          const mobileKey = `${card.scryfallId || card.resolvedName || card.inputName || 'card'}-${index}`;
+          const isSelected = selectedKey === mobileKey;
+          return (
+            <div className="mobile-image-only-item" role="listitem" key={mobileKey}>
+              <button
+                type="button"
+                className={`mobile-image-only-button ${isSelected ? 'selected' : ''}`}
+                onClick={() => setSelectedKey(isSelected ? '' : mobileKey)}
+                aria-label={`${card.resolvedName || card.inputName || 'Card'} TCGPlayer price`}
+              >
+                {card.imageSmall ? (
+                  <img
+                    className="mobile-image-only-thumb"
+                    src={card.imageSmall}
+                    alt={card.resolvedName || card.inputName || 'Card'}
+                    loading="lazy"
+                  />
+                ) : (
+                  <span className="mobile-image-only-empty">No Image</span>
+                )}
+              </button>
+              {isSelected ? (
+                <p className="mobile-image-only-price">TCGPlayer Low: {card.tcgLow || 'N/A'}</p>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   if (route === 'settings') {
     return (
       <div className="page">
@@ -1694,7 +1736,12 @@ export default function App() {
                         </select>
                       </label>
                     </div>
-                    <table className="price-table my-cards-saved-table">
+                    {renderMobileImageOnlyCards(
+                      dashboardSortedPairs,
+                      dashboardMobileSelectedCardKey,
+                      setDashboardMobileSelectedCardKey
+                    )}
+                    <table className="price-table my-cards-saved-table desktop-table-only">
                       <thead>
                         <tr>
                           <th>Pic</th>
@@ -1914,7 +1961,13 @@ export default function App() {
                     {savedPairs.length === 0 ? (
                       <p className="notice subtle">No cards in your Saved list right now.</p>
                     ) : (
-                    <table className="price-table my-cards-saved-table">
+                    <>
+                    {renderMobileImageOnlyCards(
+                      savedPairs,
+                      savedMobileSelectedCardKey,
+                      setSavedMobileSelectedCardKey
+                    )}
+                    <table className="price-table my-cards-saved-table desktop-table-only">
                       <thead>
                         <tr>
                           <th>Pic</th>
@@ -2068,6 +2121,7 @@ export default function App() {
                         )}
                       </tbody>
                     </table>
+                    </>
                     )}
 
                     <h2>Requesting</h2>
@@ -2079,7 +2133,13 @@ export default function App() {
                     {requestingPairs.length === 0 ? (
                       <p className="notice subtle">No cards are marked as requesting yet.</p>
                     ) : (
-                      <table className="price-table my-cards-requesting-table">
+                      <>
+                      {renderMobileImageOnlyCards(
+                        requestingPairs,
+                        requestingMobileSelectedCardKey,
+                        setRequestingMobileSelectedCardKey
+                      )}
+                      <table className="price-table my-cards-requesting-table desktop-table-only">
                           <thead>
                             <tr>
                               <th>Pic</th>
@@ -2266,6 +2326,7 @@ export default function App() {
                             ))}
                         </tbody>
                       </table>
+                      </>
                     )}
                   </div>
                 ) : (
