@@ -868,10 +868,16 @@ export default function App() {
           return null;
         }
 
+        const askingPriceCents =
+          card.askingPriceCents === null || card.askingPriceCents === undefined
+            ? null
+            : Number(card.askingPriceCents);
+
         return {
           cardName,
           quantity: Number(card.quantity) || 1,
           requesting: Boolean(card.requesting),
+          askingPriceCents,
           scryfallId: card.scryfallId || null,
           setCode: card.setCode || null,
           setName: card.setName || null,
@@ -891,6 +897,7 @@ export default function App() {
       const quantity = entries[index]?.quantity ?? 1;
       const unitUsd = parseUsdPrice(priced.tcgLow);
       const scryfallId = priced.scryfallId ?? entries[index]?.scryfallId ?? null;
+      const askingPriceCents = entries[index]?.askingPriceCents ?? null;
       const setCode = priced.setCode ?? entries[index]?.setCode ?? null;
       const setName = priced.setName ?? entries[index]?.setName ?? null;
       const collectorNumber = priced.collectorNumber ?? entries[index]?.collectorNumber ?? null;
@@ -904,6 +911,8 @@ export default function App() {
         ...priced,
         quantity,
         requesting,
+        askingPriceCents,
+        askingInput: formatCents(askingPriceCents),
         unitUsd,
         lineTotalUsd: unitUsd !== null ? unitUsd * quantity : null,
         scryfallId,
@@ -966,6 +975,10 @@ export default function App() {
             cardName: String(entry.cardName || entry.card_name || '').trim(),
             quantity: Number(entry.quantity) || 1,
             requesting: Boolean(entry.requesting),
+            askingPriceCents:
+              entry.askingPriceCents === null || entry.askingPriceCents === undefined
+                ? null
+                : Number(entry.askingPriceCents),
             scryfallId: entry.scryfallId || null,
             setCode: entry.setCode || null,
             setName: entry.setName || null,
@@ -1037,6 +1050,35 @@ export default function App() {
   function handleRequestingToggle(index, nextChecked) {
     setUploadedCards((previous) =>
       previous.map((card, i) => (i === index ? { ...card, requesting: Boolean(nextChecked) } : card))
+    );
+  }
+
+  function handleRequestingAskingPriceChange(index, nextValue) {
+    const askingPriceCents = parseDollarsToCents(nextValue);
+    setUploadedCards((previous) =>
+      previous.map((card, i) =>
+        i === index
+          ? {
+              ...card,
+              askingInput: nextValue,
+              askingPriceCents
+            }
+          : card
+      )
+    );
+  }
+
+  function handleRequestingAskingPriceBlur(index) {
+    setUploadedCards((previous) =>
+      previous.map((card, i) => {
+        if (i !== index) {
+          return card;
+        }
+        return {
+          ...card,
+          askingInput: formatCents(card.askingPriceCents)
+        };
+      })
     );
   }
 
@@ -1740,13 +1782,16 @@ export default function App() {
                                 ? `$${card.lineTotalUsd.toFixed(2)}`
                                 : 'N/A'}
                             </td>
-                            <td>
-                              <input
-                                type="checkbox"
-                                checked={Boolean(card.requesting)}
-                                onChange={(event) => handleRequestingToggle(index, event.target.checked)}
+                            <td className="requesting-cell">
+                              <button
+                                type="button"
+                                className={`requesting-toggle ${card.requesting ? 'active' : ''}`}
+                                onClick={() => handleRequestingToggle(index, !card.requesting)}
                                 aria-label={`Requesting ${card.resolvedName}`}
-                              />
+                                title={card.requesting ? 'Requesting enabled' : 'Requesting disabled'}
+                              >
+                                {card.requesting ? '✓' : ''}
+                              </button>
                             </td>
                             <td>
                               {card.tcgUrl ? (
@@ -1966,15 +2011,16 @@ export default function App() {
                                 ? `$${card.lineTotalUsd.toFixed(2)}`
                                 : 'N/A'}
                             </td>
-                            <td>
-                              <input
-                                type="checkbox"
-                                checked={Boolean(card.requesting)}
-                                onChange={(event) =>
-                                  handleRequestingToggle(index, event.target.checked)
-                                }
+                            <td className="requesting-cell">
+                              <button
+                                type="button"
+                                className={`requesting-toggle ${card.requesting ? 'active' : ''}`}
+                                onClick={() => handleRequestingToggle(index, !card.requesting)}
                                 aria-label={`Requesting ${card.resolvedName}`}
-                              />
+                                title={card.requesting ? 'Requesting enabled' : 'Requesting disabled'}
+                              >
+                                {card.requesting ? '✓' : ''}
+                              </button>
                             </td>
                             <td>
                               <div className="row-actions">
@@ -2039,6 +2085,7 @@ export default function App() {
                               <th>Qty</th>
                               <th>TCGPlayer Low</th>
                               <th>Line Total</th>
+                              <th>Asking For</th>
                               <th>Requesting</th>
                               <th>Links / Status</th>
                             </tr>
@@ -2138,13 +2185,27 @@ export default function App() {
                               </td>
                               <td>
                                 <input
-                                  type="checkbox"
-                                  checked={Boolean(card.requesting)}
+                                  className="ask-input"
+                                  type="text"
+                                  inputMode="decimal"
+                                  placeholder="0.00"
+                                  value={card.askingInput ?? formatCents(card.askingPriceCents)}
                                   onChange={(event) =>
-                                    handleRequestingToggle(index, event.target.checked)
+                                    handleRequestingAskingPriceChange(index, event.target.value)
                                   }
-                                  aria-label={`Requesting ${card.resolvedName}`}
+                                  onBlur={() => handleRequestingAskingPriceBlur(index)}
                                 />
+                              </td>
+                              <td className="requesting-cell">
+                                <button
+                                  type="button"
+                                  className={`requesting-toggle ${card.requesting ? 'active' : ''}`}
+                                  onClick={() => handleRequestingToggle(index, !card.requesting)}
+                                  aria-label={`Requesting ${card.resolvedName}`}
+                                  title={card.requesting ? 'Requesting enabled' : 'Requesting disabled'}
+                                >
+                                  {card.requesting ? '✓' : ''}
+                                </button>
                               </td>
                               <td>
                                 <div className="row-actions">
@@ -2188,6 +2249,7 @@ export default function App() {
                           <tr>
                             <th colSpan={5}>Total</th>
                             <th>${requestingTotal.toFixed(2)}</th>
+                            <th />
                             <th />
                             <th />
                           </tr>

@@ -262,6 +262,12 @@ for (const column of [
 }
 
 db.exec(`
+  UPDATE my_cards
+  SET requesting = 0
+  WHERE requesting IS NULL
+`);
+
+db.exec(`
   CREATE INDEX IF NOT EXISTS my_cards_account_id_idx
   ON my_cards (account_id)
 `);

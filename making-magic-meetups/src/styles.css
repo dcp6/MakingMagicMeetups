@@ -556,6 +556,50 @@ h1 {
   color: #2f0b0b;
 }
 
+.requesting-cell {
+  width: 3rem;
+  padding: 0.2rem !important;
+  text-align: center !important;
+  vertical-align: middle !important;
+}
+
+.requesting-toggle {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--stroke);
+  border-radius: 0.2rem;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-900);
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.requesting-toggle:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(15, 33, 53, 0.14);
+}
+
+.requesting-toggle:active {
+  transform: translateY(0);
+}
+
+.requesting-toggle:focus-visible {
+  outline: 2px solid var(--sun-400);
+  outline-offset: 2px;
+}
+
+.requesting-toggle.active {
+  background: linear-gradient(120deg, var(--mint-400), #53d5c4);
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #073237;
+}
+
 .card-upload-results h2 {
   margin: 0.75rem 0 0.4rem;
   font-size: 1rem;
