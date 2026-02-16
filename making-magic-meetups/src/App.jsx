@@ -659,6 +659,14 @@ export default function App() {
         }
 
         const data = await response.json();
+        const faces = Array.isArray(data.card_faces) ? data.card_faces : null;
+        const frontImage = data.image_uris
+          ? data.image_uris
+          : faces && faces[0] && faces[0].image_uris
+            ? faces[0].image_uris
+            : null;
+        const backImage =
+          faces && faces[1] && faces[1].image_uris ? faces[1].image_uris : null;
         return {
           inputName: cardName,
           resolvedName: data.name || cardName,
@@ -669,8 +677,10 @@ export default function App() {
           setCode: data.set || entry.setCode || null,
           setName: data.set_name || entry.setName || null,
           collectorNumber: data.collector_number || entry.collectorNumber || null,
-          imageSmall: data.image_uris?.small || entry.imageSmall || null,
-          imageNormal: data.image_uris?.normal || entry.imageNormal || null
+          imageSmall: frontImage?.small || entry.imageSmall || null,
+          imageNormal: frontImage?.normal || entry.imageNormal || null,
+          imageSmallBack: backImage?.small || entry.imageSmallBack || null,
+          imageNormalBack: backImage?.normal || entry.imageNormalBack || null
         };
       } catch (_error) {
         return {
@@ -684,7 +694,9 @@ export default function App() {
           setName: entry.setName || null,
           collectorNumber: entry.collectorNumber || null,
           imageSmall: entry.imageSmall || null,
-          imageNormal: entry.imageNormal || null
+          imageNormal: entry.imageNormal || null,
+          imageSmallBack: entry.imageSmallBack || null,
+          imageNormalBack: entry.imageNormalBack || null
         };
       }
     }
@@ -700,7 +712,9 @@ export default function App() {
       setName: entry.setName || null,
       collectorNumber: entry.collectorNumber || null,
       imageSmall: entry.imageSmall || null,
-      imageNormal: entry.imageNormal || null
+      imageNormal: entry.imageNormal || null,
+      imageSmallBack: entry.imageSmallBack || null,
+      imageNormalBack: entry.imageNormalBack || null
     };
   }
 
@@ -832,6 +846,8 @@ export default function App() {
       const collectorNumber = priced.collectorNumber ?? entries[index]?.collectorNumber ?? null;
       const imageSmall = priced.imageSmall ?? entries[index]?.imageSmall ?? null;
       const imageNormal = priced.imageNormal ?? entries[index]?.imageNormal ?? null;
+      const imageSmallBack = priced.imageSmallBack ?? entries[index]?.imageSmallBack ?? null;
+      const imageNormalBack = priced.imageNormalBack ?? entries[index]?.imageNormalBack ?? null;
       // Asking For is a per-card unit price ($/card) and scales by quantity.
       const askingUnitUsd =
         askingPriceCents === null || askingPriceCents === undefined
@@ -851,7 +867,9 @@ export default function App() {
         setName,
         collectorNumber,
         imageSmall,
-        imageNormal
+        imageNormal,
+        imageSmallBack,
+        imageNormalBack
       };
     });
 
@@ -917,7 +935,9 @@ export default function App() {
             setName: entry.setName || null,
             collectorNumber: entry.collectorNumber || null,
             imageSmall: entry.imageSmall || null,
-            imageNormal: entry.imageNormal || null
+            imageNormal: entry.imageNormal || null,
+            imageSmallBack: entry.imageSmallBack || null,
+            imageNormalBack: entry.imageNormalBack || null
           }))
         : parseCardEntries(cards.join('\n'));
 
@@ -1068,16 +1088,29 @@ export default function App() {
       }
       const payload = await response.json();
       const options = Array.isArray(payload.data)
-        ? payload.data.slice(0, 25).map((card) => ({
-            id: card.id,
-            name: card.name,
-            set: card.set,
-            setName: card.set_name,
-            collectorNumber: card.collector_number,
-            releasedAt: card.released_at,
-            imageSmall: card.image_uris?.small || null,
-            imageNormal: card.image_uris?.normal || null
-          }))
+        ? payload.data.slice(0, 25).map((card) => {
+            const faces = Array.isArray(card.card_faces) ? card.card_faces : null;
+            const frontImage = card.image_uris
+              ? card.image_uris
+              : faces && faces[0] && faces[0].image_uris
+                ? faces[0].image_uris
+                : null;
+            const backImage =
+              faces && faces[1] && faces[1].image_uris ? faces[1].image_uris : null;
+
+            return {
+              id: card.id,
+              name: card.name,
+              set: card.set,
+              setName: card.set_name,
+              collectorNumber: card.collector_number,
+              releasedAt: card.released_at,
+              imageSmall: frontImage?.small || null,
+              imageNormal: frontImage?.normal || null,
+              imageSmallBack: backImage?.small || null,
+              imageNormalBack: backImage?.normal || null
+            };
+          })
         : [];
 
       setVersionOptionsByKey((prev) => ({ ...prev, [cardKey]: options }));
@@ -1124,6 +1157,8 @@ export default function App() {
           collectorNumber: refreshed.collectorNumber || row.collectorNumber || null,
           imageSmall: refreshed.imageSmall || row.imageSmall || null,
           imageNormal: refreshed.imageNormal || row.imageNormal || null,
+          imageSmallBack: refreshed.imageSmallBack || row.imageSmallBack || null,
+          imageNormalBack: refreshed.imageNormalBack || row.imageNormalBack || null,
           unitUsd,
           lineTotalUsd
         };
@@ -1157,7 +1192,9 @@ export default function App() {
         setName: card.setName || null,
         collectorNumber: card.collectorNumber || null,
         imageSmall: card.imageSmall || null,
-        imageNormal: card.imageNormal || null
+        imageNormal: card.imageNormal || null,
+        imageSmallBack: card.imageSmallBack || null,
+        imageNormalBack: card.imageNormalBack || null
       }))
       .filter((entry) => entry.cardName);
 
@@ -1586,10 +1623,18 @@ export default function App() {
                                     alt={card.resolvedName}
                                     loading="lazy"
                                   />
-                                  {card.imageNormal ? (
+                                  {card.imageNormal || card.imageSmall ? (
                                     <img
-                                      className="card-thumb-preview"
-                                      src={card.imageNormal}
+                                      className="card-thumb-preview front"
+                                      src={card.imageNormal || card.imageSmall}
+                                      alt=""
+                                      loading="lazy"
+                                    />
+                                  ) : null}
+                                  {card.imageNormalBack || card.imageSmallBack ? (
+                                    <img
+                                      className="card-thumb-preview back"
+                                      src={card.imageNormalBack || card.imageSmallBack}
                                       alt=""
                                       loading="lazy"
                                     />
@@ -1775,10 +1820,18 @@ export default function App() {
                                     alt={card.resolvedName}
                                     loading="lazy"
                                   />
-                                  {card.imageNormal ? (
+                                  {card.imageNormal || card.imageSmall ? (
                                     <img
-                                      className="card-thumb-preview"
-                                      src={card.imageNormal}
+                                      className="card-thumb-preview front"
+                                      src={card.imageNormal || card.imageSmall}
+                                      alt=""
+                                      loading="lazy"
+                                    />
+                                  ) : null}
+                                  {card.imageNormalBack || card.imageSmallBack ? (
+                                    <img
+                                      className="card-thumb-preview back"
+                                      src={card.imageNormalBack || card.imageSmallBack}
                                       alt=""
                                       loading="lazy"
                                     />

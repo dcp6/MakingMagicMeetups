@@ -526,9 +526,20 @@ h1 {
   z-index: 50;
 }
 
+.card-thumb-preview.back {
+  left: calc(2.6rem + 11.4rem);
+}
+
 .thumb-wrap:hover .card-thumb-preview {
   opacity: 1;
   transform: translateY(0) scale(1);
+}
+
+@media (max-width: 720px) {
+  .card-thumb-preview.back {
+    left: 2.6rem;
+    top: 11.35rem;
+  }
 }
 
 .version-button {

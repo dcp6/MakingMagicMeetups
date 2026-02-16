@@ -231,6 +231,8 @@ db.exec(`
     collector_number TEXT,
     image_small TEXT,
     image_normal TEXT,
+    image_small_back TEXT,
+    image_normal_back TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
@@ -246,7 +248,9 @@ for (const column of [
   'set_name TEXT',
   'collector_number TEXT',
   'image_small TEXT',
-  'image_normal TEXT'
+  'image_normal TEXT',
+  'image_small_back TEXT',
+  'image_normal_back TEXT'
 ]) {
   try {
     db.exec(`ALTER TABLE my_cards ADD COLUMN ${column}`);
@@ -404,9 +408,11 @@ const upsertMyCard = db.prepare(`
     set_name,
     collector_number,
     image_small,
-    image_normal
+    image_normal,
+    image_small_back,
+    image_normal_back
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(account_id, card_name) DO UPDATE SET
     quantity = excluded.quantity,
     asking_quantity = excluded.asking_quantity,
@@ -417,6 +423,8 @@ const upsertMyCard = db.prepare(`
     collector_number = excluded.collector_number,
     image_small = excluded.image_small,
     image_normal = excluded.image_normal,
+    image_small_back = excluded.image_small_back,
+    image_normal_back = excluded.image_normal_back,
     updated_at = CURRENT_TIMESTAMP
 `);
 
@@ -431,7 +439,9 @@ const listMyCards = db.prepare(`
     set_name,
     collector_number,
     image_small,
-    image_normal
+    image_normal,
+    image_small_back,
+    image_normal_back
   FROM my_cards
   WHERE account_id = ?
   ORDER BY card_name COLLATE NOCASE ASC
@@ -931,7 +941,9 @@ app.get('/api/cards', (req, res) => {
     setName: row.set_name || null,
     collectorNumber: row.collector_number || null,
     imageSmall: row.image_small || null,
-    imageNormal: row.image_normal || null
+    imageNormal: row.image_normal || null,
+    imageSmallBack: row.image_small_back || null,
+    imageNormalBack: row.image_normal_back || null
   }));
   const cards = [];
   for (const entry of entries) {
@@ -967,6 +979,8 @@ app.post('/api/cards', (req, res) => {
     let collectorNumber = null;
     let imageSmall = null;
     let imageNormal = null;
+    let imageSmallBack = null;
+    let imageNormalBack = null;
 
     if (typeof submitted === 'string') {
       cardName = submitted.trim();
@@ -989,6 +1003,10 @@ app.post('/api/cards', (req, res) => {
       collectorNumber = submitted.collectorNumber ? String(submitted.collectorNumber).trim() : null;
       imageSmall = submitted.imageSmall ? String(submitted.imageSmall).trim() : null;
       imageNormal = submitted.imageNormal ? String(submitted.imageNormal).trim() : null;
+      imageSmallBack = submitted.imageSmallBack ? String(submitted.imageSmallBack).trim() : null;
+      imageNormalBack = submitted.imageNormalBack
+        ? String(submitted.imageNormalBack).trim()
+        : null;
     }
 
     if (!cardName) {
@@ -1024,7 +1042,9 @@ app.post('/api/cards', (req, res) => {
         setName,
         collectorNumber,
         imageSmall,
-        imageNormal
+        imageNormal,
+        imageSmallBack,
+        imageNormalBack
       });
     }
   }
@@ -1057,7 +1077,9 @@ app.post('/api/cards', (req, res) => {
         entry.setName ?? null,
         entry.collectorNumber ?? null,
         entry.imageSmall ?? null,
-        entry.imageNormal ?? null
+        entry.imageNormal ?? null,
+        entry.imageSmallBack ?? null,
+        entry.imageNormalBack ?? null
       );
     }
   });
