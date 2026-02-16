@@ -564,8 +564,9 @@ h1 {
   padding: 0 2.1rem 0 0.95rem;
   border-radius: 999px;
   border: 1px solid var(--stroke);
-  font-weight: 800;
-  letter-spacing: 0.01em;
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   cursor: pointer;
   background:
     linear-gradient(120deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.78));
