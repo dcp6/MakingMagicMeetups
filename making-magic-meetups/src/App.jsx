@@ -1,6 +1,11 @@
 import React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { applyAskingQuantityChange, applyQuantityChange, buildMyCardsTableModel } from './tableLogic';
+import {
+  applyAskingQuantityChange,
+  applyQuantityChange,
+  buildMyCardsTableModel,
+  sortCardsWithIndex
+} from './tableLogic';
 
 const configuredApiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || '').trim();
 const sessionStorageKey = 'making_magic_meetups_session_v1';
@@ -823,44 +828,6 @@ export default function App() {
     }, 0);
   }
 
-  function getSortedCardsWithIndex(cards, mode) {
-    const pairs = cards.map((card, index) => ({ card, index }));
-    if (mode === 'alpha') {
-      pairs.sort((a, b) => {
-        const left = String(a.card.resolvedName || a.card.inputName || '').toLowerCase();
-        const right = String(b.card.resolvedName || b.card.inputName || '').toLowerCase();
-        return left.localeCompare(right);
-      });
-      return pairs;
-    }
-    if (mode === 'tcgLowDesc' || mode === 'tcgLowAsc') {
-      const direction = mode === 'tcgLowAsc' ? 1 : -1;
-      pairs.sort((a, b) => {
-        const left = a.card.unitUsd === null || a.card.unitUsd === undefined ? null : Number(a.card.unitUsd);
-        const right = b.card.unitUsd === null || b.card.unitUsd === undefined ? null : Number(b.card.unitUsd);
-        if (left === null && right === null) {
-          const leftName = String(a.card.resolvedName || a.card.inputName || '').toLowerCase();
-          const rightName = String(b.card.resolvedName || b.card.inputName || '').toLowerCase();
-          return leftName.localeCompare(rightName);
-        }
-        if (left === null) {
-          return 1;
-        }
-        if (right === null) {
-          return -1;
-        }
-        if (left === right) {
-          const leftName = String(a.card.resolvedName || a.card.inputName || '').toLowerCase();
-          const rightName = String(b.card.resolvedName || b.card.inputName || '').toLowerCase();
-          return leftName.localeCompare(rightName);
-        }
-        return direction * (left - right);
-      });
-      return pairs;
-    }
-    return pairs;
-  }
-
   function buildCardEntriesForSave(cards) {
     return cards
       .map((card) => {
@@ -1452,6 +1419,10 @@ export default function App() {
     () => buildMyCardsTableModel(uploadedCards, cardSortMode),
     [uploadedCards, cardSortMode]
   );
+  const dashboardSortedPairs = useMemo(
+    () => sortCardsWithIndex(uploadedCards, cardSortMode),
+    [uploadedCards, cardSortMode]
+  );
 
   if (route === 'settings') {
     return (
@@ -1720,7 +1691,7 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {getSortedCardsWithIndex(uploadedCards, cardSortMode).map(
+                        {dashboardSortedPairs.map(
                           ({ card, index }) => (
                             <tr key={`${card.scryfallId || card.inputName || card.resolvedName}-${index}`}>
                             <td>
