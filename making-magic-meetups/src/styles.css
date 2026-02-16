@@ -577,6 +577,9 @@ h1 {
 .market-status-select {
   min-height: 1.95rem;
   width: 100%;
+  max-width: 5.4rem;
+  margin: 0 auto;
+  display: block;
   border: 1px solid var(--stroke);
   border-radius: 0.45rem;
   background: rgba(255, 255, 255, 0.92);

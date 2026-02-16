@@ -2111,9 +2111,9 @@ export default function App() {
                                 onChange={(event) => handleMarketStatusChange(index, event.target.value)}
                                 aria-label={`Status ${card.resolvedName}`}
                               >
-                                <option value="have">Have</option>
-                                <option value="requesting">Requesting</option>
-                                <option value="offering">Offering</option>
+                                <option value="have">Owned</option>
+                                <option value="requesting">Wants</option>
+                                <option value="offering">Giving</option>
                               </select>
                             </td>
                             <td>
@@ -2222,9 +2222,9 @@ export default function App() {
                     <p className="table-total">Table Total: ${savedTotal.toFixed(2)}</p>
                     <p className="notice subtle">
                       Saved: {savedQtyTotal} total {savedQtyTotal === 1 ? 'card' : 'cards'} ·
-                      Have: {haveQtyTotal} total {haveQtyTotal === 1 ? 'card' : 'cards'} ·
-                      Requesting: {requestingQtyTotal} total {requestingQtyTotal === 1 ? 'card' : 'cards'} ·
-                      Offering: {offeringQtyTotal} total {offeringQtyTotal === 1 ? 'card' : 'cards'}
+                      Owned: {haveQtyTotal} total {haveQtyTotal === 1 ? 'card' : 'cards'} ·
+                      Wants: {requestingQtyTotal} total {requestingQtyTotal === 1 ? 'card' : 'cards'} ·
+                      Giving: {offeringQtyTotal} total {offeringQtyTotal === 1 ? 'card' : 'cards'}
                     </p>
                     {savedPairs.length === 0 ? (
                       <p className="notice subtle">No cards in your Saved list right now.</p>
@@ -2347,9 +2347,9 @@ export default function App() {
                                 onChange={(event) => handleMarketStatusChange(index, event.target.value)}
                                 aria-label={`Status ${card.resolvedName}`}
                               >
-                                <option value="have">Have</option>
-                                <option value="requesting">Requesting</option>
-                                <option value="offering">Offering</option>
+                                <option value="have">Owned</option>
+                                <option value="requesting">Wants</option>
+                                <option value="offering">Giving</option>
                               </select>
                             </td>
                             <td className="mobile-hide-saved">
@@ -2395,21 +2395,21 @@ export default function App() {
                     </>
                     )}
 
-                    <h2>Requesting</h2>
+                    <h2>Wants</h2>
                     <p className="table-total">
-                      Table Total: ${requestingTotal.toFixed(2)} · Requesting Total Value: $
-                      {requestingTotalValue.toFixed(2)} · Requesting Total: {requestingQtyTotal}{' '}
+                      Table Total: ${requestingTotal.toFixed(2)} · Wants Total Value: $
+                      {requestingTotalValue.toFixed(2)} · Wants Total: {requestingQtyTotal}{' '}
                       {requestingQtyTotal === 1 ? 'card' : 'cards'}
                     </p>
                     {requestingPairs.length === 0 ? (
-                      <p className="notice subtle">No cards are marked as requesting yet.</p>
+                      <p className="notice subtle">No cards are marked as Wants yet.</p>
                     ) : (
                       <>
                       {renderMobileImageOnlyCards(
                         requestingPairs,
                         requestingMobileSelectedCardKey,
                         setRequestingMobileSelectedCardKey,
-                        'Requesting Amount',
+                        'Wants Amount',
                         (card) => {
                           const asking = formatCents(card.askingPriceCents);
                           return asking ? `$${asking}` : 'N/A';
@@ -2559,9 +2559,9 @@ export default function App() {
                                   onChange={(event) => handleMarketStatusChange(index, event.target.value)}
                                   aria-label={`Status ${card.resolvedName}`}
                                 >
-                                  <option value="have">Have</option>
-                                  <option value="requesting">Requesting</option>
-                                  <option value="offering">Offering</option>
+                                  <option value="have">Owned</option>
+                                  <option value="requesting">Wants</option>
+                                  <option value="offering">Giving</option>
                                 </select>
                               </td>
                               <td className="mobile-hide-requesting">
@@ -2606,21 +2606,21 @@ export default function App() {
                       </>
                     )}
 
-                    <h2>Offering</h2>
+                    <h2>Giving</h2>
                     <p className="table-total">
-                      Table Total: ${offeringTotal.toFixed(2)} · Offering Total Value: $
-                      {offeringTotalValue.toFixed(2)} · Offering Total: {offeringQtyTotal}{' '}
+                      Table Total: ${offeringTotal.toFixed(2)} · Giving Total Value: $
+                      {offeringTotalValue.toFixed(2)} · Giving Total: {offeringQtyTotal}{' '}
                       {offeringQtyTotal === 1 ? 'card' : 'cards'}
                     </p>
                     {offeringPairs.length === 0 ? (
-                      <p className="notice subtle">No cards in your Offering section yet.</p>
+                      <p className="notice subtle">No cards in your Giving section yet.</p>
                     ) : (
                       <>
                         {renderMobileImageOnlyCards(
                           offeringPairs,
                           offeringMobileSelectedCardKey,
                           setOfferingMobileSelectedCardKey,
-                          'Offering Amount',
+                          'Giving Amount',
                           (card) => {
                             const asking = formatCents(card.askingPriceCents);
                             return asking ? `$${asking}` : 'N/A';
@@ -2766,9 +2766,9 @@ export default function App() {
                                     onChange={(event) => handleMarketStatusChange(index, event.target.value)}
                                     aria-label={`Status ${card.resolvedName}`}
                                   >
-                                    <option value="have">Have</option>
-                                    <option value="requesting">Requesting</option>
-                                    <option value="offering">Offering</option>
+                                    <option value="have">Owned</option>
+                                    <option value="requesting">Wants</option>
+                                    <option value="offering">Giving</option>
                                   </select>
                                 </td>
                                 <td className="mobile-hide-requesting">
