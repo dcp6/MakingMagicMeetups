@@ -557,15 +557,16 @@ h1 {
 }
 
 .requesting-cell {
-  width: 3rem;
+  width: 3.4rem;
   padding: 0.2rem !important;
   text-align: center !important;
   vertical-align: middle !important;
 }
 
 .requesting-toggle {
-  width: 100%;
+  width: clamp(1rem, 20%, 1.25rem);
   aspect-ratio: 1 / 1;
+  margin: 0 auto;
   border: 1px solid var(--stroke);
   border-radius: 0.2rem;
   background: rgba(255, 255, 255, 0.9);
