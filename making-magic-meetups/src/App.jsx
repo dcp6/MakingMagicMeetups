@@ -1648,16 +1648,16 @@ export default function App() {
                         {isCardsSaving ? 'Saving...' : 'Save To My Cards'}
                       </button>
                       <label className="sort-control">
-                        <span className="sort-label">Sort</span>
+                        <span className="sort-label">Sort by</span>
                         <select
                           className="sort-select"
                           value={cardSortMode}
                           onChange={(event) => setCardSortMode(event.target.value)}
                         >
-                          <option value="upload">Upload order</option>
-                          <option value="alpha">Alphabetical (A-Z)</option>
-                          <option value="tcgLowDesc">TCGPlayer Low (High to Low)</option>
-                          <option value="tcgLowAsc">TCGPlayer Low (Low to High)</option>
+                          <option value="upload">Current order</option>
+                          <option value="alpha">Name (A-Z)</option>
+                          <option value="tcgLowDesc">TCG low (High-Low)</option>
+                          <option value="tcgLowAsc">TCG low (Low-High)</option>
                         </select>
                       </label>
                     </div>
@@ -1865,16 +1865,16 @@ export default function App() {
                     {isCardsSaving ? 'Saving...' : 'Save'}
                   </button>
                   <label className="sort-control">
-                    <span className="sort-label">Sort</span>
+                    <span className="sort-label">Sort by</span>
                     <select
                       className="sort-select"
                       value={cardSortMode}
                       onChange={(event) => setCardSortMode(event.target.value)}
                     >
                       <option value="upload">Current order</option>
-                      <option value="alpha">Alphabetical (A-Z)</option>
-                      <option value="tcgLowDesc">TCGPlayer Low (High to Low)</option>
-                      <option value="tcgLowAsc">TCGPlayer Low (Low to High)</option>
+                      <option value="alpha">Name (A-Z)</option>
+                      <option value="tcgLowDesc">TCG low (High-Low)</option>
+                      <option value="tcgLowAsc">TCG low (Low-High)</option>
                     </select>
                   </label>
                 </div>
