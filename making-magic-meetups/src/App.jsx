@@ -1848,6 +1848,11 @@ export default function App() {
 
     const savedTotal = totalsForPairs(savedPairs);
     const requestingTotal = totalsForPairs(requestingPairs);
+    const savedQtyTotal = savedPairs.reduce((sum, { card }) => sum + (Number(card.quantity) || 0), 0);
+    const requestingQtyTotal = requestingPairs.reduce(
+      (sum, { card }) => sum + (Number(card.quantity) || 0),
+      0
+    );
 
     return (
       <div className="page">
@@ -1903,8 +1908,8 @@ export default function App() {
                     <h2>Saved Cards</h2>
                     <p className="table-total">Table Total: ${savedTotal.toFixed(2)}</p>
                     <p className="notice subtle">
-                      Saved: {savedPairs.length} {savedPairs.length === 1 ? 'card' : 'cards'} · Requesting:{' '}
-                      {requestingPairs.length} {requestingPairs.length === 1 ? 'card' : 'cards'}
+                      Saved: {savedQtyTotal} total {savedQtyTotal === 1 ? 'card' : 'cards'} ·
+                      Requesting: {requestingQtyTotal} total {requestingQtyTotal === 1 ? 'card' : 'cards'}
                     </p>
                     {savedPairs.length === 0 ? (
                       <p className="notice subtle">No cards in your Saved list right now.</p>
