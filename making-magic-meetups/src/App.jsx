@@ -928,9 +928,6 @@ export default function App() {
       return;
     }
 
-    setCardInputText(
-      filteredEntries.map((entry) => `${entry.quantity} ${entry.cardName}`).join('\n')
-    );
     setIsCardPriceLoading(true);
     await priceCards(filteredEntries);
     setIsCardPriceLoading(false);
