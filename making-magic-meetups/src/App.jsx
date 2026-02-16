@@ -94,6 +94,8 @@ export default function App() {
   const [settingsNewPassword, setSettingsNewPassword] = useState('');
   const [settingsFeedback, setSettingsFeedback] = useState('');
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
+  const [settingsResetFeedback, setSettingsResetFeedback] = useState('');
+  const [isSettingsResetSubmitting, setIsSettingsResetSubmitting] = useState(false);
   const [preferredStore, setPreferredStore] = useState(null);
   const [storeSearchQuery, setStoreSearchQuery] = useState('');
   const [storeSearchResults, setStoreSearchResults] = useState([]);
@@ -746,6 +748,36 @@ export default function App() {
       setResetFeedback('Could not reset password.');
     } finally {
       setIsResetSubmitting(false);
+    }
+  }
+
+  async function handleSettingsPasswordResetRequest() {
+    setSettingsResetFeedback('');
+    const identifier = String(settingsEmail || settingsUsername || '').trim();
+    if (!identifier) {
+      setSettingsResetFeedback('Could not determine account email/username for reset.');
+      return;
+    }
+
+    setIsSettingsResetSubmitting(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/password-reset/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setSettingsResetFeedback(payload.error || 'Could not send password reset link.');
+        return;
+      }
+      setSettingsResetFeedback(
+        payload.message || 'If an account exists, a password reset link has been sent.'
+      );
+    } catch (_error) {
+      setSettingsResetFeedback('Could not send password reset link.');
+    } finally {
+      setIsSettingsResetSubmitting(false);
     }
   }
 
@@ -1679,6 +1711,21 @@ export default function App() {
                     {isSettingsSaving ? 'Saving...' : 'Save Settings'}
                   </button>
                 </form>
+
+                <div className="settings-panel">
+                  <h2>Password Reset</h2>
+                  <p>
+                    Send a reset link to your account email if you want to reset your password via email.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleSettingsPasswordResetRequest}
+                    disabled={isSettingsResetSubmitting}
+                  >
+                    {isSettingsResetSubmitting ? 'Sending...' : 'Send Password Reset Email'}
+                  </button>
+                  {settingsResetFeedback ? <p>{settingsResetFeedback}</p> : null}
+                </div>
 
                 <div className="settings-panel">
                   <h2>Preferred Store</h2>
