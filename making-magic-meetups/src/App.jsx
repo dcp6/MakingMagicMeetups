@@ -69,6 +69,7 @@ export default function App() {
   const [adminAccounts, setAdminAccounts] = useState([]);
   const [cardInputText, setCardInputText] = useState('');
   const [uploadedCards, setUploadedCards] = useState([]);
+  const [showingJustSavedCards, setShowingJustSavedCards] = useState(false);
   const [cardCostTotal, setCardCostTotal] = useState(0);
   const [cardUploadFeedback, setCardUploadFeedback] = useState('');
   const [isCardPriceLoading, setIsCardPriceLoading] = useState(false);
@@ -591,6 +592,7 @@ export default function App() {
     setAdminAccounts([]);
     setUploadedCards([]);
     setCardInputText('');
+    setShowingJustSavedCards(false);
     setLoginIdentifier('');
     setLoginPassword('');
     setLoginFeedback('Signed out.');
@@ -1012,6 +1014,7 @@ export default function App() {
     setIsCardPriceLoading(true);
     try {
       await priceCards(entries);
+      setShowingJustSavedCards(false);
       setCardUploadFeedback(
         "Loaded card list for pricing. This is not saved yet. Click 'Save List' to store it permanently."
       );
@@ -1218,6 +1221,9 @@ export default function App() {
           ? `Added ${entries.length} unique card${entries.length === 1 ? '' : 's'} to My Cards.`
           : `Saved ${entries.length} unique card${entries.length === 1 ? '' : 's'} to My Cards.`
       );
+      setCardInputText('');
+      setShowingJustSavedCards(true);
+      await loadUserCardsFromApi(authHeader);
     } catch (_error) {
       setCardUploadFeedback('Could not save card list right now.');
     } finally {
@@ -1646,7 +1652,10 @@ export default function App() {
                     id="card-list-input"
                     placeholder="Example: Black Lotus&#10;Lightning Bolt&#10;Sol Ring"
                     value={cardInputText}
-                    onChange={(event) => setCardInputText(event.target.value)}
+                    onChange={(event) => {
+                      setCardInputText(event.target.value);
+                      setShowingJustSavedCards(false);
+                    }}
                     rows={8}
                   />
                   <button type="submit">Upload Card List</button>
@@ -1655,16 +1664,18 @@ export default function App() {
                 {isCardPriceLoading ? <p className="notice subtle">Loading prices from Scryfall...</p> : null}
                 {uploadedCards.length > 0 ? (
                   <div className="card-upload-results">
-                    <h2>Uploaded Cards</h2>
+                    <h2>{showingJustSavedCards ? 'Just Saved Cards' : 'Uploaded Cards'}</h2>
                     <div className="dashboard-actions">
-                      <button
-                        type="button"
-                        className="action-button primary"
-                        onClick={() => handleSaveList({ mode: 'add' })}
-                        disabled={isCardPriceLoading || isCardsSaving}
-                      >
-                        {isCardsSaving ? 'Saving...' : 'Save To My Cards'}
-                      </button>
+                      {!showingJustSavedCards ? (
+                        <button
+                          type="button"
+                          className="action-button primary"
+                          onClick={() => handleSaveList({ mode: 'add' })}
+                          disabled={isCardPriceLoading || isCardsSaving}
+                        >
+                          {isCardsSaving ? 'Saving...' : 'Save To My Cards'}
+                        </button>
+                      ) : null}
                       <label className="sort-control">
                         <span className="sort-label">Sort by</span>
                         <select
