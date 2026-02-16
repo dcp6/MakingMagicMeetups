@@ -456,6 +456,11 @@ h1 {
   background: rgba(255, 255, 255, 0.7);
 }
 
+.helper-text {
+  font-size: 0.8rem;
+  color: var(--text-700);
+}
+
 .action-button {
   min-height: 38px;
   padding: 0 0.95rem;
