@@ -1648,8 +1648,9 @@ export default function App() {
                         {isCardsSaving ? 'Saving...' : 'Save To My Cards'}
                       </button>
                       <label className="sort-control">
-                        Sort:{' '}
+                        <span className="sort-label">Sort</span>
                         <select
+                          className="sort-select"
                           value={cardSortMode}
                           onChange={(event) => setCardSortMode(event.target.value)}
                         >
@@ -1864,8 +1865,9 @@ export default function App() {
                     {isCardsSaving ? 'Saving...' : 'Save'}
                   </button>
                   <label className="sort-control">
-                    Sort:{' '}
+                    <span className="sort-label">Sort</span>
                     <select
+                      className="sort-select"
                       value={cardSortMode}
                       onChange={(event) => setCardSortMode(event.target.value)}
                     >
