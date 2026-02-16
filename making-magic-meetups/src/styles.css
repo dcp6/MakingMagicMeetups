@@ -522,6 +522,7 @@ h1 {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 0.55rem;
 }
 
@@ -670,9 +671,15 @@ h1 {
 .price-table th,
 .price-table td {
   border-bottom: 1px solid var(--stroke);
-  text-align: left;
+  text-align: center;
   padding: 0.5rem 0.45rem;
-  vertical-align: top;
+  vertical-align: middle;
+}
+
+.price-table th:not(:first-child),
+.price-table td:not(:first-child) {
+  padding-left: 0.9rem;
+  padding-right: 0.9rem;
 }
 
 .price-table th {
@@ -762,6 +769,9 @@ h1 {
   border-radius: 0.5rem;
   background: rgba(255, 255, 255, 0.7);
   color: var(--ink);
+  text-align: center;
+  display: block;
+  margin: 0 auto;
 }
 
 .ask-input {
@@ -771,6 +781,9 @@ h1 {
   border-radius: 0.5rem;
   background: rgba(255, 255, 255, 0.7);
   color: var(--ink);
+  text-align: center;
+  display: block;
+  margin: 0 auto;
 }
 
 .card-thumb {
@@ -827,6 +840,8 @@ h1 {
   background: rgba(255, 255, 255, 0.65);
   color: var(--ink);
   font-size: 0.85rem;
+  display: block;
+  margin: 0 auto;
 }
 
 .version-picker {
@@ -840,6 +855,9 @@ h1 {
   border-radius: 0.5rem;
   background: rgba(255, 255, 255, 0.7);
   color: var(--ink);
+  text-align: center;
+  display: block;
+  margin: 0.35rem auto 0;
 }
 
 .sr-only {
