@@ -1908,17 +1908,17 @@ export default function App() {
                     {savedPairs.length === 0 ? (
                       <p className="notice subtle">No cards in your Saved list right now.</p>
                     ) : (
-                    <table className="price-table">
+                    <table className="price-table my-cards-saved-table">
                       <thead>
                         <tr>
                           <th>Pic</th>
-                          <th>Card</th>
-                          <th>Version</th>
+                          <th className="mobile-hide-saved">Card</th>
+                          <th className="mobile-hide-saved">Version</th>
                           <th>Qty</th>
                           <th>TCGPlayer Low</th>
-                          <th>Line Total</th>
+                          <th className="mobile-hide-saved">Line Total</th>
                           <th>Requesting</th>
-                          <th>Links / Status</th>
+                          <th className="mobile-hide-saved">Links / Status</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1953,8 +1953,8 @@ export default function App() {
                                 </div>
                               ) : null}
                             </td>
-                            <td>{card.resolvedName}</td>
-                            <td>
+                            <td className="mobile-hide-saved">{card.resolvedName}</td>
+                            <td className="mobile-hide-saved">
                               <button
                                 type="button"
                                 className="version-button"
@@ -2006,7 +2006,7 @@ export default function App() {
                               />
                             </td>
                             <td>{card.tcgLow}</td>
-                            <td>
+                            <td className="mobile-hide-saved">
                               {card.lineTotalUsd !== null
                                 ? `$${card.lineTotalUsd.toFixed(2)}`
                                 : 'N/A'}
