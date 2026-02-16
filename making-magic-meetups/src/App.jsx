@@ -1443,7 +1443,7 @@ export default function App() {
     [uploadedCards, cardSortMode]
   );
 
-  function renderMobileImageOnlyCards(pairs, selectedKey, setSelectedKey) {
+  function renderMobileImageOnlyCards(pairs, selectedKey, setSelectedKey, detailLabel, detailValueFn) {
     return (
       <div className="mobile-image-only-grid" role="list">
         {pairs.map(({ card, index }) => {
@@ -1469,7 +1469,9 @@ export default function App() {
                 )}
               </button>
               {isSelected ? (
-                <p className="mobile-image-only-price">TCGPlayer Low: {card.tcgLow || 'N/A'}</p>
+                <p className="mobile-image-only-price">
+                  {detailLabel}: {detailValueFn(card)}
+                </p>
               ) : null}
             </div>
           );
@@ -1739,7 +1741,9 @@ export default function App() {
                     {renderMobileImageOnlyCards(
                       dashboardSortedPairs,
                       dashboardMobileSelectedCardKey,
-                      setDashboardMobileSelectedCardKey
+                      setDashboardMobileSelectedCardKey,
+                      'TCGPlayer Low',
+                      (card) => card.tcgLow || 'N/A'
                     )}
                     <table className="price-table my-cards-saved-table desktop-table-only">
                       <thead>
@@ -1965,7 +1969,9 @@ export default function App() {
                     {renderMobileImageOnlyCards(
                       savedPairs,
                       savedMobileSelectedCardKey,
-                      setSavedMobileSelectedCardKey
+                      setSavedMobileSelectedCardKey,
+                      'TCGPlayer Low',
+                      (card) => card.tcgLow || 'N/A'
                     )}
                     <table className="price-table my-cards-saved-table desktop-table-only">
                       <thead>
@@ -2137,7 +2143,12 @@ export default function App() {
                       {renderMobileImageOnlyCards(
                         requestingPairs,
                         requestingMobileSelectedCardKey,
-                        setRequestingMobileSelectedCardKey
+                        setRequestingMobileSelectedCardKey,
+                        'Requesting Amount',
+                        (card) => {
+                          const asking = formatCents(card.askingPriceCents);
+                          return asking ? `$${asking}` : 'N/A';
+                        }
                       )}
                       <table className="price-table my-cards-requesting-table desktop-table-only">
                           <thead>
