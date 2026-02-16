@@ -107,6 +107,7 @@ export default function App() {
   const [dashboardMobileSelectedCardKey, setDashboardMobileSelectedCardKey] = useState('');
   const [savedMobileSelectedCardKey, setSavedMobileSelectedCardKey] = useState('');
   const [requestingMobileSelectedCardKey, setRequestingMobileSelectedCardKey] = useState('');
+  const [offeringMobileSelectedCardKey, setOfferingMobileSelectedCardKey] = useState('');
   const [loginServiceStatus, setLoginServiceStatus] = useState('unknown');
   const [loginServiceLastCheckedAt, setLoginServiceLastCheckedAt] = useState(null);
   const [loginServiceLastStatusCode, setLoginServiceLastStatusCode] = useState(null);
@@ -634,6 +635,7 @@ export default function App() {
     setDashboardMobileSelectedCardKey('');
     setSavedMobileSelectedCardKey('');
     setRequestingMobileSelectedCardKey('');
+    setOfferingMobileSelectedCardKey('');
     setLoginIdentifier('');
     setLoginPassword('');
     setLoginFeedback('Signed out.');
@@ -2123,6 +2125,9 @@ export default function App() {
       savedQtyTotal,
       requestingQtyTotal
     } = myCardsTableModel;
+    const offeringPairs = savedPairs;
+    const offeringTotal = savedTotal;
+    const offeringQtyTotal = savedQtyTotal;
 
     return (
       <div className="page">
@@ -2556,6 +2561,94 @@ export default function App() {
                             ))}
                         </tbody>
                       </table>
+                      </>
+                    )}
+
+                    <h2>Offering</h2>
+                    <p className="table-total">
+                      Table Total: ${offeringTotal.toFixed(2)} · Offering Total: {offeringQtyTotal}{' '}
+                      {offeringQtyTotal === 1 ? 'card' : 'cards'}
+                    </p>
+                    {offeringPairs.length === 0 ? (
+                      <p className="notice subtle">No cards in your Offering section yet.</p>
+                    ) : (
+                      <>
+                        {renderMobileImageOnlyCards(
+                          offeringPairs,
+                          offeringMobileSelectedCardKey,
+                          setOfferingMobileSelectedCardKey,
+                          'TCGPlayer Low',
+                          (card) => card.tcgLow || 'N/A'
+                        )}
+                        <table className="price-table my-cards-saved-table desktop-table-only">
+                          <thead>
+                            <tr>
+                              <th>Pic</th>
+                              <th className="mobile-hide-saved">Card</th>
+                              <th className="mobile-hide-saved">Version</th>
+                              <th>Qty</th>
+                              <th>TCGPlayer Low</th>
+                              <th className="mobile-hide-saved">Line Total</th>
+                              <th className="mobile-hide-saved">Links / Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {offeringPairs.map(({ card, index }) => (
+                              <tr key={`${card.scryfallId || card.inputName || card.resolvedName}-offering-${index}`}>
+                                <td>
+                                  {card.imageSmall ? (
+                                    <div className="thumb-wrap">
+                                      <img
+                                        className="card-thumb"
+                                        src={card.imageSmall}
+                                        alt={card.resolvedName}
+                                        loading="lazy"
+                                      />
+                                      {card.imageNormal || card.imageSmall ? (
+                                        <img
+                                          className="card-thumb-preview front"
+                                          src={card.imageNormal || card.imageSmall}
+                                          alt=""
+                                          loading="lazy"
+                                        />
+                                      ) : null}
+                                      {card.imageNormalBack || card.imageSmallBack ? (
+                                        <img
+                                          className="card-thumb-preview back"
+                                          src={card.imageNormalBack || card.imageSmallBack}
+                                          alt=""
+                                          loading="lazy"
+                                        />
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                </td>
+                                <td className="mobile-hide-saved">{card.resolvedName}</td>
+                                <td className="mobile-hide-saved">
+                                  {card.setCode && card.collectorNumber
+                                    ? `${card.setCode.toUpperCase()} #${card.collectorNumber}`
+                                    : '-'}
+                                </td>
+                                <td>{card.quantity}</td>
+                                <td>{card.tcgLow}</td>
+                                <td className="mobile-hide-saved">
+                                  {card.lineTotalUsd !== null ? `$${card.lineTotalUsd.toFixed(2)}` : 'N/A'}
+                                </td>
+                                <td className="mobile-hide-saved">
+                                  {card.tcgUrl ? (
+                                    <a href={card.tcgUrl} target="_blank" rel="noreferrer">
+                                      TCGPlayer
+                                    </a>
+                                  ) : card.error ? (
+                                    card.error
+                                  ) : (
+                                    'No link'
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </>
                     )}
                   </div>
