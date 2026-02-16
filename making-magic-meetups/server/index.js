@@ -1197,6 +1197,12 @@ app.post('/api/password-reset/request', async (req, res) => {
     return res.status(429).json({ error: 'Too many reset attempts. Try again later.' });
   }
 
+  if (!resendApiKey || !resetEmailFrom) {
+    return res.status(503).json({
+      error: 'Password reset email is not configured. Set RESEND_API_KEY and RESET_EMAIL_FROM.'
+    });
+  }
+
   const identifier = String(req.body?.identifier || '').trim();
   if (!identifier) {
     recordPasswordResetAttempt(throttleKey, false);
@@ -1235,8 +1241,10 @@ app.post('/api/password-reset/request', async (req, res) => {
         username: account.username,
         resetUrl
       });
-    } catch (_emailError) {
-      // Avoid leaking provider failures to clients. Reset tokens remain valid.
+    } catch (emailError) {
+      console.error('Password reset email delivery failed:', emailError);
+      recordPasswordResetAttempt(throttleKey, false);
+      return res.status(502).json({ error: 'Could not send password reset email.' });
     }
 
     recordPasswordResetAttempt(throttleKey, true);
