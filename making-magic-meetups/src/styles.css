@@ -476,6 +476,27 @@ h1 {
 
 .dashboard-actions {
   margin: 0.4rem 0 0.2rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.sort-control {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--ink-700);
+}
+
+.sort-control select {
+  min-height: 36px;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--stroke);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--ink);
 }
 
 .qty-input {

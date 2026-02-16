@@ -69,6 +69,7 @@ export default function App() {
   const [isCardPriceLoading, setIsCardPriceLoading] = useState(false);
   const [versionOptionsByKey, setVersionOptionsByKey] = useState({});
   const [versionLoadingKey, setVersionLoadingKey] = useState(null);
+  const [cardSortMode, setCardSortMode] = useState('upload');
   const [settingsUsername, setSettingsUsername] = useState('');
   const [settingsFullName, setSettingsFullName] = useState('');
   const [settingsEmail, setSettingsEmail] = useState('');
@@ -827,6 +828,44 @@ export default function App() {
       }
       return sum + entry.askingLineTotalUsd;
     }, 0);
+  }
+
+  function getSortedCardsWithIndex(cards, mode) {
+    const pairs = cards.map((card, index) => ({ card, index }));
+    if (mode === 'alpha') {
+      pairs.sort((a, b) => {
+        const left = String(a.card.resolvedName || a.card.inputName || '').toLowerCase();
+        const right = String(b.card.resolvedName || b.card.inputName || '').toLowerCase();
+        return left.localeCompare(right);
+      });
+      return pairs;
+    }
+    if (mode === 'tcgLowDesc' || mode === 'tcgLowAsc') {
+      const direction = mode === 'tcgLowAsc' ? 1 : -1;
+      pairs.sort((a, b) => {
+        const left = a.card.unitUsd === null || a.card.unitUsd === undefined ? null : Number(a.card.unitUsd);
+        const right = b.card.unitUsd === null || b.card.unitUsd === undefined ? null : Number(b.card.unitUsd);
+        if (left === null && right === null) {
+          const leftName = String(a.card.resolvedName || a.card.inputName || '').toLowerCase();
+          const rightName = String(b.card.resolvedName || b.card.inputName || '').toLowerCase();
+          return leftName.localeCompare(rightName);
+        }
+        if (left === null) {
+          return 1;
+        }
+        if (right === null) {
+          return -1;
+        }
+        if (left === right) {
+          const leftName = String(a.card.resolvedName || a.card.inputName || '').toLowerCase();
+          const rightName = String(b.card.resolvedName || b.card.inputName || '').toLowerCase();
+          return leftName.localeCompare(rightName);
+        }
+        return direction * (left - right);
+      });
+      return pairs;
+    }
+    return pairs;
   }
 
   async function priceCards(entries) {
@@ -1595,6 +1634,18 @@ export default function App() {
                       <button type="button" onClick={handleSaveList}>
                         Save List
                       </button>
+                      <label className="sort-control">
+                        Sort:{' '}
+                        <select
+                          value={cardSortMode}
+                          onChange={(event) => setCardSortMode(event.target.value)}
+                        >
+                          <option value="upload">Upload order</option>
+                          <option value="alpha">Alphabetical (A-Z)</option>
+                          <option value="tcgLowDesc">TCGPlayer Low (High to Low)</option>
+                          <option value="tcgLowAsc">TCGPlayer Low (Low to High)</option>
+                        </select>
+                      </label>
                     </div>
                     <table className="price-table">
                       <thead>
@@ -1612,8 +1663,9 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {uploadedCards.map((card, index) => (
-                          <tr key={`${card.inputName}-${index}`}>
+                        {getSortedCardsWithIndex(uploadedCards, cardSortMode).map(
+                          ({ card, index }) => (
+                            <tr key={`${card.scryfallId || card.inputName || card.resolvedName}-${index}`}>
                             <td>
                               {card.imageSmall ? (
                                 <div className="thumb-wrap">
@@ -1740,7 +1792,8 @@ export default function App() {
                               )}
                             </td>
                           </tr>
-                        ))}
+                          )
+                        )}
                       </tbody>
                       <tfoot>
                         <tr>
@@ -1787,6 +1840,18 @@ export default function App() {
                   <button type="button" onClick={handleSaveList}>
                     Save Changes
                   </button>
+                  <label className="sort-control">
+                    Sort:{' '}
+                    <select
+                      value={cardSortMode}
+                      onChange={(event) => setCardSortMode(event.target.value)}
+                    >
+                      <option value="upload">Current order</option>
+                      <option value="alpha">Alphabetical (A-Z)</option>
+                      <option value="tcgLowDesc">TCGPlayer Low (High to Low)</option>
+                      <option value="tcgLowAsc">TCGPlayer Low (Low to High)</option>
+                    </select>
+                  </label>
                 </div>
                 {cardUploadFeedback ? <p>{cardUploadFeedback}</p> : null}
                 {isCardPriceLoading ? <p>Loading prices from Scryfall...</p> : null}
@@ -1809,8 +1874,9 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {uploadedCards.map((card, index) => (
-                          <tr key={`${card.inputName || card.resolvedName}-${index}`}>
+                        {getSortedCardsWithIndex(uploadedCards, cardSortMode).map(
+                          ({ card, index }) => (
+                            <tr key={`${card.scryfallId || card.inputName || card.resolvedName}-${index}`}>
                             <td>
                               {card.imageSmall ? (
                                 <div className="thumb-wrap">
@@ -1939,7 +2005,8 @@ export default function App() {
                               )}
                             </td>
                           </tr>
-                        ))}
+                          )
+                        )}
                       </tbody>
                       <tfoot>
                         <tr>
