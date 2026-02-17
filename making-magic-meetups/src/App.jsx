@@ -25,6 +25,8 @@ function normalizeApiBaseUrl(value) {
 const configuredApiBaseUrl = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL || '');
 const sessionStorageKey = 'making_magic_meetups_session_v1';
 const apiBaseStorageKey = 'making_magic_meetups_api_base_v1';
+const storeSearchCacheStorageKey = 'making_magic_meetups_store_search_cache_v1';
+const storeSearchCacheTtlMs = 15 * 60 * 1000;
 
 const events = [
   {
@@ -453,6 +455,30 @@ export default function App() {
       return;
     }
 
+    const cacheKey = `${query.toLowerCase()}|${String(selectedStoreLocation || '')
+      .trim()
+      .toLowerCase()}`;
+    try {
+      const rawCache = window.localStorage.getItem(storeSearchCacheStorageKey);
+      if (rawCache) {
+        const parsedCache = JSON.parse(rawCache);
+        const cachedEntry = parsedCache?.[cacheKey];
+        if (
+          cachedEntry &&
+          Number.isFinite(cachedEntry.savedAt) &&
+          Date.now() - cachedEntry.savedAt <= storeSearchCacheTtlMs
+        ) {
+          setStoreLocationOptions(Array.isArray(cachedEntry.locationOptions) ? cachedEntry.locationOptions : []);
+          setSelectedStoreLocation(String(cachedEntry.effectiveSelectedLocation || ''));
+          setStoreSearchResults(Array.isArray(cachedEntry.stores) ? cachedEntry.stores : []);
+          setStoreSearchFeedback(cachedEntry.feedback ? `${cachedEntry.feedback} (cached)` : 'Loaded cached results.');
+          return;
+        }
+      }
+    } catch (_error) {
+      // Ignore cache parse/storage errors and continue with live search.
+    }
+
     async function searchMapkitPlaces(searchText) {
       const search = new window.mapkit.Search();
       const data = await new Promise((resolve, reject) => {
@@ -478,6 +504,31 @@ export default function App() {
       setSelectedStoreLocation(searchResult.effectiveSelectedLocation);
       setStoreSearchResults(searchResult.stores);
       setStoreSearchFeedback(searchResult.feedback);
+
+      try {
+        const rawCache = window.localStorage.getItem(storeSearchCacheStorageKey);
+        const parsedCache = rawCache ? JSON.parse(rawCache) : {};
+        const safeCache = parsedCache && typeof parsedCache === 'object' ? parsedCache : {};
+        const nextCache = {
+          ...safeCache,
+          [cacheKey]: {
+            savedAt: Date.now(),
+            locationOptions: searchResult.locationOptions,
+            effectiveSelectedLocation: searchResult.effectiveSelectedLocation,
+            stores: searchResult.stores,
+            feedback: searchResult.feedback
+          }
+        };
+
+        const entries = Object.entries(nextCache).sort(
+          (a, b) => Number(b?.[1]?.savedAt || 0) - Number(a?.[1]?.savedAt || 0)
+        );
+        const trimmedEntries = entries.slice(0, 40);
+        const trimmedCache = Object.fromEntries(trimmedEntries);
+        window.localStorage.setItem(storeSearchCacheStorageKey, JSON.stringify(trimmedCache));
+      } catch (_error) {
+        // Ignore cache parse/storage errors.
+      }
     } catch (_error) {
       setStoreSearchResults([]);
       setStoreSearchFeedback('Could not search stores. Check MapKit token/config and try again.');
