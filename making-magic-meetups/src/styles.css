@@ -375,6 +375,20 @@ h1 {
   color: var(--text-700);
 }
 
+.settings-store-map-wrap {
+  margin: 0.75rem auto 0;
+  max-width: 460px;
+  width: 100%;
+}
+
+.settings-store-map {
+  width: 100%;
+  height: 220px;
+  border-radius: 0.8rem;
+  border: 1px solid var(--stroke);
+  overflow: hidden;
+}
+
 .store-results {
   margin-top: 0.75rem;
   display: flex;

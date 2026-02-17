@@ -104,6 +104,10 @@ export default function App() {
   const [isStoreSearching, setIsStoreSearching] = useState(false);
   const [isPreferredStoreSaving, setIsPreferredStoreSaving] = useState(false);
   const [isMapKitReady, setIsMapKitReady] = useState(false);
+  const [selectedStoreCoordinate, setSelectedStoreCoordinate] = useState(null);
+  const storeMapContainerRef = useRef(null);
+  const storeMapRef = useRef(null);
+  const storeMapMarkerRef = useRef(null);
   const [dashboardMobileSelectedCardKey, setDashboardMobileSelectedCardKey] = useState('');
   const [savedMobileSelectedCardKey, setSavedMobileSelectedCardKey] = useState('');
   const [requestingMobileSelectedCardKey, setRequestingMobileSelectedCardKey] = useState('');
@@ -331,6 +335,87 @@ export default function App() {
     setIsMapKitReady(true);
   }, [route, loggedInUser, apiBaseUrl]);
 
+  useEffect(() => {
+    if (route !== 'settings' || !preferredStore) {
+      setSelectedStoreCoordinate(null);
+      return;
+    }
+
+    const latitude = Number(preferredStore.latitude);
+    const longitude = Number(preferredStore.longitude);
+    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      setSelectedStoreCoordinate({ latitude, longitude });
+      return;
+    }
+
+    if (!window.mapkit || !isMapKitReady) {
+      return;
+    }
+
+    const lookupQuery = [preferredStore.name, preferredStore.address].filter(Boolean).join(' ').trim();
+    if (!lookupQuery) {
+      setSelectedStoreCoordinate(null);
+      return;
+    }
+
+    const search = new window.mapkit.Search();
+    search.search(lookupQuery, (error, response) => {
+      if (error) {
+        setSelectedStoreCoordinate(null);
+        return;
+      }
+      const firstPlace = Array.isArray(response?.places) ? response.places[0] : null;
+      const lat = Number(firstPlace?.coordinate?.latitude);
+      const lng = Number(firstPlace?.coordinate?.longitude);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        setSelectedStoreCoordinate({ latitude: lat, longitude: lng });
+        return;
+      }
+      setSelectedStoreCoordinate(null);
+    });
+  }, [route, preferredStore, isMapKitReady]);
+
+  useEffect(() => {
+    if (route !== 'settings' || !isMapKitReady || !selectedStoreCoordinate || !storeMapContainerRef.current) {
+      return;
+    }
+    if (!window.mapkit) {
+      return;
+    }
+
+    const coordinate = new window.mapkit.Coordinate(
+      selectedStoreCoordinate.latitude,
+      selectedStoreCoordinate.longitude
+    );
+    const region = new window.mapkit.CoordinateRegion(
+      coordinate,
+      new window.mapkit.CoordinateSpan(0.03, 0.03)
+    );
+
+    if (!storeMapRef.current) {
+      storeMapRef.current = new window.mapkit.Map(storeMapContainerRef.current, {
+        showsCompass: window.mapkit.FeatureVisibility.Hidden,
+        showsZoomControl: true,
+        isRotationEnabled: false,
+        isScrollEnabled: true
+      });
+    }
+
+    const map = storeMapRef.current;
+    map.region = region;
+
+    if (storeMapMarkerRef.current) {
+      map.removeAnnotation(storeMapMarkerRef.current);
+    }
+
+    const marker = new window.mapkit.MarkerAnnotation(coordinate, {
+      title: preferredStore?.name || 'Preferred store',
+      subtitle: preferredStore?.address || ''
+    });
+    map.addAnnotation(marker);
+    storeMapMarkerRef.current = marker;
+  }, [route, isMapKitReady, selectedStoreCoordinate, preferredStore]);
+
   async function handleStoreSearch(event) {
     event.preventDefault();
     setStoreSearchFeedback('');
@@ -376,7 +461,18 @@ export default function App() {
         const url = placeId ? `https://maps.apple.com/place?place-id=${encodeURIComponent(placeId)}` : null;
         const website = place?.website || null;
         const phone = place?.phoneNumber || null;
-        return { placeId, name, address, url, website, phone };
+        const latitude = Number(place?.coordinate?.latitude);
+        const longitude = Number(place?.coordinate?.longitude);
+        return {
+          placeId,
+          name,
+          address,
+          url,
+          website,
+          phone,
+          latitude: Number.isFinite(latitude) ? latitude : null,
+          longitude: Number.isFinite(longitude) ? longitude : null
+        };
       });
 
       setStoreSearchResults(stores);
@@ -427,7 +523,24 @@ export default function App() {
         setStoreSearchFeedback(payload.error || 'Could not save preferred store.');
         return;
       }
-      setPreferredStore(payload.preferredStore || null);
+      const mergedPreferredStore = payload.preferredStore
+        ? {
+            ...payload.preferredStore,
+            latitude: Number.isFinite(Number(store?.latitude)) ? Number(store.latitude) : null,
+            longitude: Number.isFinite(Number(store?.longitude)) ? Number(store.longitude) : null
+          }
+        : null;
+      setPreferredStore(mergedPreferredStore);
+      setSelectedStoreCoordinate(
+        mergedPreferredStore &&
+          Number.isFinite(Number(mergedPreferredStore.latitude)) &&
+          Number.isFinite(Number(mergedPreferredStore.longitude))
+          ? {
+              latitude: Number(mergedPreferredStore.latitude),
+              longitude: Number(mergedPreferredStore.longitude)
+            }
+          : null
+      );
       setStoreSearchFeedback(store ? 'Preferred store saved.' : 'Preferred store cleared.');
     } catch (_error) {
       setStoreSearchFeedback('Could not save preferred store.');
@@ -1807,6 +1920,13 @@ export default function App() {
                       {preferredStore.phone ? (
                         <p className="settings-store-address">{preferredStore.phone}</p>
                       ) : null}
+                      <div className="settings-store-map-wrap">
+                        {selectedStoreCoordinate ? (
+                          <div ref={storeMapContainerRef} className="settings-store-map" />
+                        ) : (
+                          <p className="settings-store-address">Map preview not available for this store yet.</p>
+                        )}
+                      </div>
                       <button
                         type="button"
                         onClick={() => savePreferredStore(null)}
