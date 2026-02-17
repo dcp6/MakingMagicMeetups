@@ -97,7 +97,14 @@ export function rankStores(places, limit = 10) {
   for (const place of places) {
     const placeId = place?.placeId || place?.identifier || place?.id || null;
     const name = String(place?.name || '').trim();
-    const dedupeKey = String(placeId || name || '').toLowerCase();
+    const address = String(place?.formattedAddress || place?.address || '').trim();
+    const latitude = Number(place?.coordinate?.latitude);
+    const longitude = Number(place?.coordinate?.longitude);
+    const coordKey =
+      Number.isFinite(latitude) && Number.isFinite(longitude) ? `${latitude},${longitude}` : '';
+    const dedupeKey = String(
+      placeId || [name, address, coordKey].filter(Boolean).join('|') || name
+    ).toLowerCase();
     if (!dedupeKey || seenPlaceKeys.has(dedupeKey)) {
       continue;
     }

@@ -83,4 +83,25 @@ describe('storeSearchLogic', () => {
     expect(ranked).toHaveLength(1);
     expect(ranked[0].name).toBe('Magic Card Castle');
   });
+
+  it('keeps same-name stores when they are in different zip codes', () => {
+    const ranked = rankStores([
+      {
+        name: 'Card Kingdom',
+        formattedAddress: '123 Main St, Seattle, WA 98101',
+        pointOfInterestCategory: 'hobby',
+        coordinate: { latitude: 47.61, longitude: -122.33 }
+      },
+      {
+        name: 'Card Kingdom',
+        formattedAddress: '555 South St, Seattle, WA 98134',
+        pointOfInterestCategory: 'hobby',
+        coordinate: { latitude: 47.58, longitude: -122.33 }
+      }
+    ]);
+
+    expect(ranked).toHaveLength(2);
+    expect(ranked[0].name).toBe('Card Kingdom');
+    expect(ranked[1].name).toBe('Card Kingdom');
+  });
 });
