@@ -9,19 +9,25 @@ import {
 
 describe('storeSearchLogic', () => {
   it('continues searching stores even if location-seed lookup fails', async () => {
-    const searchPlaces = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('seed failed'))
-      .mockResolvedValueOnce([
-        {
-          placeId: 'p1',
-          name: 'Card Vault',
-          formattedAddress: '123 Main St, Austin, TX',
-          pointOfInterestCategory: 'hobby',
-          coordinate: { latitude: 30.2, longitude: -97.7 }
-        }
-      ])
-      .mockResolvedValueOnce([]);
+    let callCount = 0;
+    const searchPlaces = vi.fn().mockImplementation(async (searchText) => {
+      callCount += 1;
+      if (callCount === 1) {
+        throw new Error('seed failed');
+      }
+      if (/card shop|trading card store|austin/i.test(String(searchText || ''))) {
+        return [
+          {
+            placeId: 'p1',
+            name: 'Card Vault',
+            formattedAddress: '123 Main St, Austin, TX',
+            pointOfInterestCategory: 'hobby',
+            coordinate: { latitude: 30.2, longitude: -97.7 }
+          }
+        ];
+      }
+      return [];
+    });
 
     const result = await runStoreSearch({
       query: 'card shop',
@@ -29,7 +35,7 @@ describe('storeSearchLogic', () => {
       searchPlaces
     });
 
-    expect(searchPlaces).toHaveBeenCalledTimes(2);
+    expect(searchPlaces).toHaveBeenCalled();
     expect(result.stores).toHaveLength(1);
     expect(result.stores[0].name).toBe('Card Vault');
   });
@@ -103,5 +109,32 @@ describe('storeSearchLogic', () => {
     expect(ranked).toHaveLength(2);
     expect(ranked[0].name).toBe('Card Kingdom');
     expect(ranked[1].name).toBe('Card Kingdom');
+  });
+
+  it('derives location options from returned store results when seed options are sparse', async () => {
+    const searchPlaces = vi
+      .fn()
+      .mockResolvedValueOnce([{ name: 'Card Kingdom', formattedAddress: 'Seattle, WA' }])
+      .mockResolvedValueOnce([
+        {
+          name: 'Card Kingdom',
+          formattedAddress: '123 Main St, Seattle, WA 98101',
+          pointOfInterestCategory: 'hobby'
+        },
+        {
+          name: 'Card Kingdom',
+          formattedAddress: '555 South St, Seattle, WA 98134',
+          pointOfInterestCategory: 'hobby'
+        }
+      ]);
+
+    const result = await runStoreSearch({
+      query: 'Card Kingdom',
+      selectedStoreLocation: '',
+      searchPlaces
+    });
+
+    expect(result.locationOptions).toContain('Seattle, WA 98101');
+    expect(result.locationOptions).toContain('Seattle, WA 98134');
   });
 });

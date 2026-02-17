@@ -471,8 +471,11 @@ export default function App() {
           setStoreLocationOptions(Array.isArray(cachedEntry.locationOptions) ? cachedEntry.locationOptions : []);
           setSelectedStoreLocation(String(cachedEntry.effectiveSelectedLocation || ''));
           setStoreSearchResults(Array.isArray(cachedEntry.stores) ? cachedEntry.stores : []);
-          setStoreSearchFeedback(cachedEntry.feedback ? `${cachedEntry.feedback} (cached)` : 'Loaded cached results.');
-          return;
+          setStoreSearchFeedback(
+            cachedEntry.feedback
+              ? `${cachedEntry.feedback} (cached, refreshing...)`
+              : 'Loaded cached results (refreshing...)'
+          );
         }
       }
     } catch (_error) {

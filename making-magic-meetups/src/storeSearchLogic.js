@@ -128,26 +128,40 @@ export function rankStores(places, limit = 10) {
 
 export async function runStoreSearch({ query, selectedStoreLocation, searchPlaces }) {
   const trimmedQuery = String(query || '').trim();
-
-  let locationSeedPlaces = [];
-  try {
-    locationSeedPlaces = await searchPlaces(trimmedQuery);
-  } catch (_error) {
-    locationSeedPlaces = [];
+  async function safeSearchPlaces(searchText) {
+    try {
+      const result = await searchPlaces(searchText);
+      return Array.isArray(result) ? result : [];
+    } catch (_error) {
+      return [];
+    }
   }
 
-  const locationOptions = deriveLocationOptions(locationSeedPlaces);
+  const locationSeedPlaces = await safeSearchPlaces(trimmedQuery);
+
+  const initialTcgQuery = buildTcgQuery(trimmedQuery, selectedStoreLocation);
+  const primaryPlaces = await safeSearchPlaces(initialTcgQuery);
+  const fallbackPlaces =
+    initialTcgQuery !== trimmedQuery && primaryPlaces.length < 4
+      ? await safeSearchPlaces(trimmedQuery)
+      : [];
+
+  const locationOptions = deriveLocationOptions(
+    [...locationSeedPlaces, ...primaryPlaces, ...fallbackPlaces],
+    12
+  );
   const effectiveSelectedLocation = resolveEffectiveSelectedLocation(
     selectedStoreLocation,
     locationOptions
   );
-  const tcgQuery = buildTcgQuery(trimmedQuery, effectiveSelectedLocation);
-
-  const primaryPlaces = await searchPlaces(tcgQuery);
-  const fallbackPlaces =
-    tcgQuery !== trimmedQuery && primaryPlaces.length < 4 ? await searchPlaces(trimmedQuery) : [];
-  const stores = rankStores([...primaryPlaces, ...fallbackPlaces]);
-
+  const effectiveTcgQuery = buildTcgQuery(trimmedQuery, effectiveSelectedLocation);
+  const effectivePrimaryPlaces =
+    effectiveTcgQuery === initialTcgQuery ? primaryPlaces : await safeSearchPlaces(effectiveTcgQuery);
+  const effectiveFallbackPlaces =
+    effectiveTcgQuery !== trimmedQuery && effectivePrimaryPlaces.length < 4
+      ? await safeSearchPlaces(trimmedQuery)
+      : [];
+  const stores = rankStores([...effectivePrimaryPlaces, ...effectiveFallbackPlaces]);
   let feedback = '';
   if (!stores.length) {
     feedback =
