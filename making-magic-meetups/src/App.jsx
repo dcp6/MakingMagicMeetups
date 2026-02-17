@@ -424,10 +424,6 @@ export default function App() {
       setStoreSearchFeedback('Please log in with a user account.');
       return;
     }
-    if (!loginAuthHeader) {
-      setStoreSearchFeedback('Please log in again.');
-      return;
-    }
 
     const query = storeSearchQuery.trim();
     if (!query) {
@@ -544,7 +540,7 @@ export default function App() {
       );
     } catch (_error) {
       setStoreSearchResults([]);
-      setStoreSearchFeedback('Could not search stores.');
+      setStoreSearchFeedback('Could not search stores. Check MapKit token/config and try again.');
     } finally {
       setIsStoreSearching(false);
     }
