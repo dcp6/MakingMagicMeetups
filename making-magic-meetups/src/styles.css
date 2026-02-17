@@ -396,6 +396,33 @@ h1 {
   gap: 0.55rem;
 }
 
+.store-location-options {
+  margin-top: 0.6rem;
+}
+
+.store-location-option-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.3rem;
+}
+
+.store-location-option {
+  min-height: 32px;
+  border: 1px solid var(--stroke);
+  border-radius: 0.6rem;
+  background: #fff;
+  color: var(--text-800);
+  font-weight: 700;
+  padding: 0 0.7rem;
+  cursor: pointer;
+}
+
+.store-location-option.active {
+  background: var(--mint-300);
+  border-color: var(--mint-500);
+}
+
 .store-result {
   display: flex;
   gap: 0.75rem;

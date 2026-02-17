@@ -6,6 +6,7 @@ import {
   buildMyCardsTableModel,
   sortCardsWithIndex
 } from './tableLogic';
+import { runStoreSearch } from './storeSearchLogic';
 
 const canonicalApiBaseUrl = 'https://makingmagicmeetups.onrender.com';
 const legacyApiBaseUrls = new Set(['https://makingmagicmeetups-api.onrender.com']);
@@ -118,6 +119,8 @@ export default function App() {
   const [isStoreSearching, setIsStoreSearching] = useState(false);
   const [isPreferredStoreSaving, setIsPreferredStoreSaving] = useState(false);
   const [isMapKitReady, setIsMapKitReady] = useState(false);
+  const [storeLocationOptions, setStoreLocationOptions] = useState([]);
+  const [selectedStoreLocation, setSelectedStoreLocation] = useState('');
   const [selectedStoreCoordinate, setSelectedStoreCoordinate] = useState(null);
   const storeMapContainerRef = useRef(null);
   const storeMapRef = useRef(null);
@@ -450,36 +453,6 @@ export default function App() {
       return;
     }
 
-    const tcgHintRegex =
-      /\b(mtg|magic|trading\s*card|trading\s*cards|tcg|card\s*shop|game\s*store|collectibles?|hobby)\b/i;
-    const tcgQuery = tcgHintRegex.test(query) ? query : `${query} trading card store`;
-
-    function scoreStorePlace(place) {
-      const name = String(place?.name || '').toLowerCase();
-      const address = String(place?.formattedAddress || place?.address || '').toLowerCase();
-      const subtitle = String(place?.subtitle || '').toLowerCase();
-      const category = String(
-        place?.pointOfInterestCategory || place?.poiCategory || place?.category || ''
-      ).toLowerCase();
-      const categoryList = Array.isArray(place?.pointOfInterestCategories)
-        ? place.pointOfInterestCategories.map((value) => String(value || '').toLowerCase()).join(' ')
-        : '';
-
-      const text = [name, address, subtitle, category, categoryList].join(' ');
-      let score = 0;
-
-      if (/\b(mtg|magic the gathering|magic: the gathering)\b/.test(text)) {
-        score += 10;
-      }
-      if (/\b(trading\s*card|trading\s*cards|tcg|card\s*shop)\b/.test(text)) {
-        score += 8;
-      }
-      if (/\b(game\s*store|board\s*game|comic|hobby|collectibles?)\b/.test(text)) {
-        score += 4;
-      }
-      return score;
-    }
-
     async function searchMapkitPlaces(searchText) {
       const search = new window.mapkit.Search();
       const data = await new Promise((resolve, reject) => {
@@ -496,62 +469,15 @@ export default function App() {
 
     setIsStoreSearching(true);
     try {
-      const primaryPlaces = await searchMapkitPlaces(tcgQuery);
-      const fallbackPlaces =
-        tcgQuery !== query && primaryPlaces.length < 4 ? await searchMapkitPlaces(query) : [];
-      const places = [...primaryPlaces, ...fallbackPlaces];
-
-      const dedupedPlaces = [];
-      const seenPlaceKeys = new Set();
-      for (const place of places) {
-        const placeId = place?.placeId || place?.identifier || place?.id || null;
-        const name = String(place?.name || '').trim();
-        const dedupeKey = String(placeId || name || '').toLowerCase();
-        if (!dedupeKey || seenPlaceKeys.has(dedupeKey)) {
-          continue;
-        }
-        seenPlaceKeys.add(dedupeKey);
-        dedupedPlaces.push(place);
-      }
-
-      const scoredStores = dedupedPlaces.map((place) => {
-        const placeId = place?.placeId || place?.identifier || place?.id || null;
-        const name = place?.name || null;
-        const address = place?.formattedAddress || place?.address || null;
-        const url = placeId ? `https://maps.apple.com/place?place-id=${encodeURIComponent(placeId)}` : null;
-        const website = place?.website || null;
-        const phone = place?.phoneNumber || null;
-        const latitude = Number(place?.coordinate?.latitude);
-        const longitude = Number(place?.coordinate?.longitude);
-        return {
-          placeId,
-          name,
-          address,
-          url,
-          website,
-          phone,
-          latitude: Number.isFinite(latitude) ? latitude : null,
-          longitude: Number.isFinite(longitude) ? longitude : null,
-          _relevanceScore: scoreStorePlace(place)
-        };
+      const searchResult = await runStoreSearch({
+        query,
+        selectedStoreLocation,
+        searchPlaces: searchMapkitPlaces
       });
-
-      const tcgStores = scoredStores
-        .filter((store) => store._relevanceScore > 0)
-        .sort((a, b) => b._relevanceScore - a._relevanceScore);
-
-      const bestStores = (tcgStores.length ? tcgStores : scoredStores)
-        .sort((a, b) => b._relevanceScore - a._relevanceScore)
-        .slice(0, 10)
-        .map((store) => {
-          const { _relevanceScore, ...rest } = store;
-          return rest;
-        });
-
-      setStoreSearchResults(bestStores);
-      setStoreSearchFeedback(
-        bestStores.length ? '' : 'No trading card stores found for that search. Try adding a city.'
-      );
+      setStoreLocationOptions(searchResult.locationOptions);
+      setSelectedStoreLocation(searchResult.effectiveSelectedLocation);
+      setStoreSearchResults(searchResult.stores);
+      setStoreSearchFeedback(searchResult.feedback);
     } catch (_error) {
       setStoreSearchResults([]);
       setStoreSearchFeedback('Could not search stores. Check MapKit token/config and try again.');
@@ -2029,6 +1955,39 @@ export default function App() {
                       {isStoreSearching ? 'Searching...' : 'Search'}
                     </button>
                   </form>
+
+                  {storeLocationOptions.length ? (
+                    <div className="store-location-options">
+                      <p className="settings-store-address">Possible locations:</p>
+                      <div className="store-location-option-list">
+                        {storeLocationOptions.map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            className={option === selectedStoreLocation ? 'store-location-option active' : 'store-location-option'}
+                            onClick={() => {
+                              setSelectedStoreLocation(option);
+                              setStoreSearchFeedback(`Location set to ${option}. Click Search.`);
+                            }}
+                          >
+                            {option}
+                          </button>
+                        ))}
+                        {selectedStoreLocation ? (
+                          <button
+                            type="button"
+                            className="store-location-option"
+                            onClick={() => {
+                              setSelectedStoreLocation('');
+                              setStoreSearchFeedback('Location filter cleared.');
+                            }}
+                          >
+                            Clear
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
 
                   {!isMapKitReady ? (
                     <p className="settings-store-address">
