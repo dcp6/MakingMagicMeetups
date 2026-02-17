@@ -86,7 +86,7 @@ describe('storeSearchLogic', () => {
       }
     ]);
 
-    expect(ranked).toHaveLength(1);
+    expect(ranked).toHaveLength(2);
     expect(ranked[0].name).toBe('Magic Card Castle');
   });
 
@@ -109,6 +109,34 @@ describe('storeSearchLogic', () => {
     expect(ranked).toHaveLength(2);
     expect(ranked[0].name).toBe('Card Kingdom');
     expect(ranked[1].name).toBe('Card Kingdom');
+  });
+
+  it('keeps zero-score branches when another same-name branch scores higher', () => {
+    const ranked = rankStores([
+      {
+        name: 'Mox Boarding House',
+        formattedAddress: '123 Main St, Seattle, WA 98101',
+        pointOfInterestCategory: 'hobby',
+        coordinate: { latitude: 47.61, longitude: -122.33 }
+      },
+      {
+        name: 'Mox Boarding House',
+        formattedAddress: '555 South St, Bellevue, WA 98004',
+        pointOfInterestCategory: '',
+        coordinate: { latitude: 47.62, longitude: -122.20 }
+      },
+      {
+        name: 'Mox Boarding House',
+        formattedAddress: '777 East St, Portland, OR 97204',
+        pointOfInterestCategory: '',
+        coordinate: { latitude: 45.52, longitude: -122.67 }
+      }
+    ]);
+
+    expect(ranked).toHaveLength(3);
+    expect(ranked[0].name).toBe('Mox Boarding House');
+    expect(ranked[1].name).toBe('Mox Boarding House');
+    expect(ranked[2].name).toBe('Mox Boarding House');
   });
 
   it('derives location options from returned store results when seed options are sparse', async () => {

@@ -113,11 +113,9 @@ export function rankStores(places, limit = 10) {
   }
 
   const scoredStores = dedupedPlaces.map(mapPlaceToStore);
-  const tcgStores = scoredStores
-    .filter((store) => store._relevanceScore > 0)
-    .sort((a, b) => b._relevanceScore - a._relevanceScore);
-
-  return (tcgStores.length ? tcgStores : scoredStores)
+  // Always keep all deduped results; prioritize TCG-relevant stores first
+  // without dropping same-name branches that may have sparse category metadata.
+  return scoredStores
     .sort((a, b) => b._relevanceScore - a._relevanceScore)
     .slice(0, limit)
     .map((store) => {
