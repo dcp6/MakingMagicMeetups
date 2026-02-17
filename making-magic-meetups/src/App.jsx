@@ -7,7 +7,21 @@ import {
   sortCardsWithIndex
 } from './tableLogic';
 
-const configuredApiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || '').trim();
+const canonicalApiBaseUrl = 'https://makingmagicmeetups.onrender.com';
+const legacyApiBaseUrls = new Set(['https://makingmagicmeetups-api.onrender.com']);
+
+function normalizeApiBaseUrl(value) {
+  const normalized = String(value || '').trim().replace(/\/+$/, '');
+  if (!normalized) {
+    return '';
+  }
+  if (legacyApiBaseUrls.has(normalized)) {
+    return canonicalApiBaseUrl;
+  }
+  return normalized;
+}
+
+const configuredApiBaseUrl = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL || '');
 const sessionStorageKey = 'making_magic_meetups_session_v1';
 const apiBaseStorageKey = 'making_magic_meetups_api_base_v1';
 
@@ -39,7 +53,7 @@ export default function App() {
       return configuredApiBaseUrl;
     }
     try {
-      const stored = window.localStorage.getItem(apiBaseStorageKey);
+      const stored = normalizeApiBaseUrl(window.localStorage.getItem(apiBaseStorageKey));
       if (stored && /^https?:\/\//i.test(stored)) {
         return stored;
       }
@@ -47,7 +61,7 @@ export default function App() {
       // ignore
     }
     // Default guess; we will auto-detect the right one on load.
-    return 'https://makingmagicmeetups.onrender.com';
+    return canonicalApiBaseUrl;
   });
   const [route, setRoute] = useState('home');
   const [email, setEmail] = useState('');
@@ -191,7 +205,7 @@ export default function App() {
     try {
       let stored = '';
       try {
-        stored = String(window.localStorage.getItem(apiBaseStorageKey) || '').trim();
+        stored = normalizeApiBaseUrl(window.localStorage.getItem(apiBaseStorageKey));
       } catch (_error) {
         stored = '';
       }
@@ -200,9 +214,9 @@ export default function App() {
         apiBaseUrl,
         configuredApiBaseUrl,
         stored,
-        'https://makingmagicmeetups.onrender.com'
+        canonicalApiBaseUrl
       ]
-        .map((value) => String(value || '').trim())
+        .map((value) => normalizeApiBaseUrl(value))
         .filter(Boolean);
 
       const seen = new Set();
