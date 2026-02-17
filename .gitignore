@@ -5,3 +5,7 @@ node_modules/
 *.db-wal
 *.db-shm
 basic-website/users.db
+
+# Apple MapKit private keys
+AuthKey_*.p8
+**/AuthKey_*.p8
