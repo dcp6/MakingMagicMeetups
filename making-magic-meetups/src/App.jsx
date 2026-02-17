@@ -196,8 +196,7 @@ export default function App() {
         apiBaseUrl,
         configuredApiBaseUrl,
         stored,
-        'https://makingmagicmeetups.onrender.com',
-        'https://makingmagicmeetups-api.onrender.com'
+        'https://makingmagicmeetups.onrender.com'
       ]
         .map((value) => String(value || '').trim())
         .filter(Boolean);
