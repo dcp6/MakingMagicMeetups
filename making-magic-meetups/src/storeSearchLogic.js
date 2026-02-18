@@ -102,9 +102,8 @@ export function rankStores(places, limit = 10) {
     const longitude = Number(place?.coordinate?.longitude);
     const coordKey =
       Number.isFinite(latitude) && Number.isFinite(longitude) ? `${latitude},${longitude}` : '';
-    const dedupeKey = String(
-      placeId || [name, address, coordKey].filter(Boolean).join('|') || name
-    ).toLowerCase();
+    const dedupeParts = [placeId || '', address, coordKey].filter(Boolean);
+    const dedupeKey = String((dedupeParts.length ? dedupeParts.join('|') : name)).toLowerCase();
     if (!dedupeKey || seenPlaceKeys.has(dedupeKey)) {
       continue;
     }

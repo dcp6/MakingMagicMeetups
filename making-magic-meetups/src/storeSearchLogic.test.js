@@ -139,6 +139,27 @@ describe('storeSearchLogic', () => {
     expect(ranked[2].name).toBe('Mox Boarding House');
   });
 
+  it('keeps branches with same placeId when address differs', () => {
+    const ranked = rankStores([
+      {
+        placeId: 'shared-place-id',
+        name: 'Mox Boarding House',
+        formattedAddress: '5105 Leary Ave NW, Seattle, WA 98107',
+        pointOfInterestCategory: 'hobby',
+        coordinate: { latitude: 47.665, longitude: -122.381 }
+      },
+      {
+        placeId: 'shared-place-id',
+        name: 'Mox Boarding House',
+        formattedAddress: '13310 Bel-Red Rd, Bellevue, WA 98005',
+        pointOfInterestCategory: 'hobby',
+        coordinate: { latitude: 47.622, longitude: -122.164 }
+      }
+    ]);
+
+    expect(ranked).toHaveLength(2);
+  });
+
   it('derives location options from returned store results when seed options are sparse', async () => {
     const searchPlaces = vi
       .fn()
