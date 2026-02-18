@@ -2153,6 +2153,11 @@ export default function App() {
                     )}
                   </tbody>
                 </table>
+                <h2>Future Is Now material</h2>
+                <p className="notice subtle">
+                  This section is visible to admin users only. Add future rollout notes, protected links,
+                  and internal planning material here.
+                </p>
               </div>
             ) : null}
             {loggedInUser?.role === 'user' ? (
