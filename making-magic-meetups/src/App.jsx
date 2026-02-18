@@ -94,6 +94,7 @@ export default function App() {
   const [adminAccountCount, setAdminAccountCount] = useState(null);
   const [adminAccounts, setAdminAccounts] = useState([]);
   const [adminPasswordResetEvents, setAdminPasswordResetEvents] = useState([]);
+  const [futureIsNowMaterial, setFutureIsNowMaterial] = useState(['', '', '', '', '']);
   const [cardInputText, setCardInputText] = useState('');
   const [uploadedCards, setUploadedCards] = useState([]);
   const [showingJustSavedCards, setShowingJustSavedCards] = useState(false);
@@ -2158,6 +2159,21 @@ export default function App() {
                   This section is visible to admin users only. Add future rollout notes, protected links,
                   and internal planning material here.
                 </p>
+                <div className="dashboard-tool">
+                  {futureIsNowMaterial.map((value, index) => (
+                    <input
+                      key={`future-is-now-${index + 1}`}
+                      type="text"
+                      placeholder={`Future Is Now material ${index + 1}`}
+                      value={value}
+                      onChange={(event) => {
+                        const next = [...futureIsNowMaterial];
+                        next[index] = event.target.value;
+                        setFutureIsNowMaterial(next);
+                      }}
+                    />
+                  ))}
+                </div>
               </div>
             ) : null}
             {loggedInUser?.role === 'user' ? (
