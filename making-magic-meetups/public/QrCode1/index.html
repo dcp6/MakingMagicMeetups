@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow, noarchive" />
+    <title>QrCode1</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f8ff;
+        --panel: #ffffff;
+        --ink: #10243d;
+        --accent: #0ea58f;
+        --line: rgba(16, 36, 61, 0.15);
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: Avenir Next, Segoe UI, Arial, sans-serif;
+        background: radial-gradient(circle at 10% 0%, #d6e7ff 0%, transparent 40%), var(--bg);
+        color: var(--ink);
+      }
+
+      .card {
+        width: min(680px, calc(100vw - 2rem));
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--panel);
+        padding: 1.25rem;
+        box-shadow: 0 18px 40px rgba(16, 36, 61, 0.14);
+      }
+
+      h1 {
+        margin: 0 0 0.5rem;
+        font-size: 1.6rem;
+      }
+
+      p {
+        margin: 0.4rem 0;
+        line-height: 1.45;
+      }
+
+      a.button {
+        display: inline-block;
+        margin-top: 0.8rem;
+        text-decoration: none;
+        background: linear-gradient(120deg, var(--accent), #3bcdb8);
+        color: #08332c;
+        font-weight: 700;
+        border-radius: 10px;
+        padding: 0.65rem 0.9rem;
+      }
+
+      .small {
+        font-size: 0.82rem;
+        opacity: 0.8;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1>QrCode1</h1>
+      <p>This page hosts the uploaded file for direct access.</p>
+      <a class="button" href="./QRCodeMath1.txt" download>Download QRCodeMath1.txt</a>
+      <p class="small">Unlisted path: <code>/QrCode1/</code></p>
+    </main>
+  </body>
+</html>
