@@ -1,5 +1,5 @@
 const tcgHintRegex =
-  /\b(mtg|magic|trading\s*card|trading\s*cards|tcg|card\s*shop|game\s*store|collectibles?|hobby)\b/i;
+  /\b(mtg|magic|trading\s*card|trading\s*cards|tcg|card\s*shop|game\s*store|game\s*shop|gaming|collectibles?|hobby|tabletop|warhammer|pokemon)\b/i;
 
 export function buildTcgQuery(query, selectedStoreLocation) {
   const baseQuery = String(query || '').trim();
@@ -7,7 +7,7 @@ export function buildTcgQuery(query, selectedStoreLocation) {
   if (tcgHintRegex.test(baseQuery)) {
     return `${baseQuery}${locationSuffix}`.trim();
   }
-  return `${baseQuery}${locationSuffix} trading card store`.trim();
+  return `${baseQuery}${locationSuffix} trading card game store`.trim();
 }
 
 export function scoreStorePlace(place) {
@@ -23,15 +23,30 @@ export function scoreStorePlace(place) {
 
   const text = [name, address, subtitle, category, categoryList].join(' ');
   let score = 0;
+
+  // Tier 1 — definitive MTG/TCG stores
   if (/\b(mtg|magic the gathering|magic: the gathering)\b/.test(text)) {
     score += 10;
   }
   if (/\b(trading\s*card|trading\s*cards|tcg|card\s*shop)\b/.test(text)) {
     score += 8;
   }
-  if (/\b(game\s*store|board\s*game|comic|hobby|collectibles?)\b/.test(text)) {
+
+  // Tier 2 — broad gaming / hobby stores
+  if (/\b(game\s*store|game\s*shop|board\s*game|comic|hobby|collectibles?|tabletop)\b/.test(text)) {
     score += 4;
   }
+
+  // Tier 3 — adjacent gaming keywords (warhammer, pokemon, rpg, etc.)
+  if (/\b(gaming|warhammer|pokemon|pok[eé]mon|yugioh|yu-gi-oh|dungeon|miniatures?|rpg|anime)\b/.test(text)) {
+    score += 3;
+  }
+
+  // Tier 4 — Apple Maps POI category signals
+  if (/\b(game_arcade|toy_store|hobby_store|entertainment)\b/.test(category + ' ' + categoryList)) {
+    score += 3;
+  }
+
   return score;
 }
 
@@ -81,12 +96,6 @@ function mapPlaceToStore(place) {
   const latitude = Number(place?.coordinate?.latitude);
   const longitude = Number(place?.coordinate?.longitude);
   const relevanceScore = scoreStorePlace(place);
-  // A result is an actual store (not a city/area) when it has a POI category,
-  // a phone number, or a non-zero TCG relevance score.
-  const hasPoiCategory = Boolean(
-    place?.pointOfInterestCategory || place?.poiCategory || place?.category
-  );
-  const isActualStore = relevanceScore > 0 || hasPoiCategory || Boolean(phone);
   return {
     placeId,
     name,
@@ -96,7 +105,9 @@ function mapPlaceToStore(place) {
     phone,
     latitude: Number.isFinite(latitude) ? latitude : null,
     longitude: Number.isFinite(longitude) ? longitude : null,
-    isActualStore,
+    // Only gaming-identified results are allowed in the list; this flag drives
+    // the "Set as My Store" button in the UI.
+    isActualStore: relevanceScore > 0,
     _relevanceScore: relevanceScore
   };
 }
@@ -121,10 +132,9 @@ export function rankStores(places, limit = 10) {
     dedupedPlaces.push(place);
   }
 
-  const scoredStores = dedupedPlaces.map(mapPlaceToStore);
-  // Always keep all deduped results; prioritize TCG-relevant stores first
-  // without dropping same-name branches that may have sparse category metadata.
-  return scoredStores
+  return dedupedPlaces
+    .map(mapPlaceToStore)
+    .filter((store) => store._relevanceScore > 0)   // Only confirmed gaming stores
     .sort((a, b) => b._relevanceScore - a._relevanceScore)
     .slice(0, limit)
     .map((store) => {
@@ -174,7 +184,7 @@ export async function runStoreSearch({ query, selectedStoreLocation, searchPlace
     feedback =
       !effectiveSelectedLocation && locationOptions.length > 1
         ? 'Choose a location below, then search again.'
-        : 'No trading card stores found for that search. Try another location.';
+        : 'No gaming stores found for that search. Try a different city or store name.';
   }
 
   return {
