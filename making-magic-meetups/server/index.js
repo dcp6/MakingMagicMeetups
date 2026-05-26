@@ -7,7 +7,7 @@ import Database from 'better-sqlite3';
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import { Pool } from 'pg';
-import { isPostgresConfigured } from './db/postgres/config.js';
+import { getPostgresConnectionString, isPostgresConfigured } from './db/postgres/config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -58,7 +58,8 @@ const passwordResetBaseUrl = String(
 ).trim();
 const resendApiKey = String(process.env.RESEND_API_KEY || '').trim();
 const resetEmailFrom = String(process.env.RESET_EMAIL_FROM || '').trim();
-const isPostgresEnabled = isPostgresConfigured();
+const postgresConnectionString = getPostgresConnectionString();
+const isPostgresEnabled = Boolean(postgresConnectionString);
 const dbBackendEnv = String(process.env.DB_BACKEND || '').trim().toLowerCase();
 const usePostgresRuntime = isPostgresEnabled && dbBackendEnv === 'postgres';
 const dbBackend = usePostgresRuntime
@@ -78,23 +79,17 @@ function parsePgSsl() {
   return { rejectUnauthorized: true };
 }
 
-const pgPool =
-  isPostgresEnabled && process.env.DATABASE_URL
-    ? new Pool({
-        connectionString: process.env.DATABASE_URL,
-        ssl: parsePgSsl()
-      })
-    : isPostgresEnabled && process.env.POSTGRES_URL
-      ? new Pool({
-          connectionString: process.env.POSTGRES_URL,
-          ssl: parsePgSsl()
-      })
-      : null;
+const pgPool = isPostgresEnabled
+  ? new Pool({
+      connectionString: postgresConnectionString,
+      ssl: parsePgSsl()
+    })
+  : null;
 
 function assertRuntimeConfigOrExit() {
   if (dbBackendEnv === 'postgres' && !isPostgresEnabled) {
     console.error(
-      'Startup failed: DB_BACKEND=postgres is set but DATABASE_URL/POSTGRES_URL is missing.'
+      'Startup failed: DB_BACKEND=postgres is set but DATABASE_URL/POSTGRES_URL/SUPABASE_DB_URL is missing.'
     );
     process.exit(1);
   }
@@ -1247,7 +1242,7 @@ async function validatePostgresRuntimeOrExit() {
   }
   if (!pgPool) {
     console.error(
-      'Startup failed: DB_BACKEND=postgres requires a valid DATABASE_URL/POSTGRES_URL.'
+      'Startup failed: DB_BACKEND=postgres requires a valid DATABASE_URL/POSTGRES_URL/SUPABASE_DB_URL.'
     );
     process.exit(1);
   }

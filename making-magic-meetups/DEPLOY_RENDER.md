@@ -46,9 +46,17 @@ The repo now includes Postgres schema + migration tools:
 
 Required env vars:
 
-- `DATABASE_URL` (or `POSTGRES_URL`)
+- `DATABASE_URL` (or `POSTGRES_URL`, `SUPABASE_DB_URL`, or `SUPABASE_DATABASE_URL`)
 - `DB_BACKEND=postgres` to enable runtime reads/writes against Postgres
 - Optional `PGSSLMODE=no-verify` for hosted Postgres that requires TLS with relaxed verification.
+
+For Supabase, use the Postgres connection string format, for example:
+
+```text
+postgresql://postgres.inxolpvjbfcalvoscgae:<YOUR-PASSWORD>@aws-1-us-east-2.pooler.supabase.com:5432/postgres
+```
+
+Use the actual Supabase Postgres connection string; do not use the Supabase REST/API endpoint.
 
 Suggested migration flow:
 
