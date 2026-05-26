@@ -10,6 +10,21 @@ export function buildTcgQuery(query, selectedStoreLocation) {
   return `${baseQuery}${locationSuffix} trading card game store`.trim();
 }
 
+// Returns true if a place's coordinates fall within the Americas or Europe.
+// Places with no coordinate are allowed through (can't be verified, don't penalise).
+export function isInAmericaOrEurope(place) {
+  const lat = Number(place?.coordinate?.latitude);
+  const lon = Number(place?.coordinate?.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return true; // no coords — let the result through
+  }
+  // Americas: continental US, Alaska, Hawaii, Canada, Mexico, Caribbean
+  const inAmericas = lat >= 14 && lat <= 72 && lon >= -168 && lon <= -52;
+  // Europe: Iceland east through Turkey/Russia's western edge, north Africa not included
+  const inEurope = lat >= 34 && lat <= 72 && lon >= -25 && lon <= 45;
+  return inAmericas || inEurope;
+}
+
 // Returns true for actual gaming businesses — excludes cities and areas.
 // Apple does NOT populate subtitle; the only tag they give is category: "Store"
 // for real businesses vs. undefined for geographic places like "Seattle, WA".
@@ -158,6 +173,7 @@ export function rankStores(places, limit = 10) {
 
   return dedupedPlaces
     .filter(isTaggedAsGamingStore)                  // Exclude cities/areas
+    .filter(isInAmericaOrEurope)                    // Exclude results outside US/Europe
     .map(mapPlaceToStore)
     .sort((a, b) => b._relevanceScore - a._relevanceScore)
     .slice(0, limit)
