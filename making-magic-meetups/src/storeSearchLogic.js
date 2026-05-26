@@ -23,7 +23,10 @@ export function isTaggedAsGamingStore(place) {
     : '';
 
   const appleTag = [subtitle, category, categoryList].join(' ');
-  return /\b(game\s*store|game\s*shop|gaming|hobby|comic|toy\s*store|collectibles?|tabletop|trading\s*card|tcg|card\s*shop|game_arcade|hobby_store|toy_store|warhammer|pokemon|miniatures?|rpg|entertainment)\b/.test(appleTag);
+  // Broad match — Apple uses many variations ("Game Store", "Games", "Toy & Game",
+  // "Hobby", "Comic", "Entertainment", etc.). MapKit's search already narrowed
+  // results to gaming-related places; we just need to exclude generic businesses.
+  return /\b(games?|gaming|hobby|comic|toy|tcg|trading\s*card|collectible|tabletop|warhammer|pok[eé]mon|miniature|rpg|entertainment|arcade|card)\b/.test(appleTag);
 }
 
 export function scoreStorePlace(place) {
@@ -137,6 +140,16 @@ export function rankStores(places, limit = 10) {
     }
     seenPlaceKeys.add(dedupeKey);
     dedupedPlaces.push(place);
+  }
+
+  // Debug: log what Apple returned so we can tune the filter.
+  if (typeof console !== 'undefined') {
+    dedupedPlaces.forEach((p) => {
+      const tagged = isTaggedAsGamingStore(p);
+      console.log(
+        `[store] ${tagged ? '✅' : '❌'} "${p?.name}" | subtitle: "${p?.subtitle}" | category: "${p?.pointOfInterestCategory ?? p?.poiCategory ?? p?.category}"`
+      );
+    });
   }
 
   return dedupedPlaces
