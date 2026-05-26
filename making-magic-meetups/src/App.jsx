@@ -2128,6 +2128,7 @@ export default function App() {
                             <p className="store-result-name">{store.name}</p>
                             {store.address ? <p className="store-result-address">{store.address}</p> : null}
                           </div>
+                          {store.isActualStore ? (
                           <button
                             type="button"
                             onClick={() => savePreferredStore(store)}
@@ -2135,6 +2136,7 @@ export default function App() {
                           >
                             {isPreferredStoreSaving ? 'Saving...' : 'Set Preferred'}
                           </button>
+                          ) : null}
                         </div>
                       ))}
                     </div>
@@ -2327,7 +2329,7 @@ export default function App() {
                               <a href={store.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Maps Listing</a>
                             ) : null}
                           </div>
-                          {loggedInUser?.role === 'user' ? (
+                          {loggedInUser?.role === 'user' && store.isActualStore ? (
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); savePreferredStore(store); }}

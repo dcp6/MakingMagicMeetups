@@ -80,6 +80,13 @@ function mapPlaceToStore(place) {
   const phone = place?.phoneNumber || null;
   const latitude = Number(place?.coordinate?.latitude);
   const longitude = Number(place?.coordinate?.longitude);
+  const relevanceScore = scoreStorePlace(place);
+  // A result is an actual store (not a city/area) when it has a POI category,
+  // a phone number, or a non-zero TCG relevance score.
+  const hasPoiCategory = Boolean(
+    place?.pointOfInterestCategory || place?.poiCategory || place?.category
+  );
+  const isActualStore = relevanceScore > 0 || hasPoiCategory || Boolean(phone);
   return {
     placeId,
     name,
@@ -89,7 +96,8 @@ function mapPlaceToStore(place) {
     phone,
     latitude: Number.isFinite(latitude) ? latitude : null,
     longitude: Number.isFinite(longitude) ? longitude : null,
-    _relevanceScore: scoreStorePlace(place)
+    isActualStore,
+    _relevanceScore: relevanceScore
   };
 }
 
