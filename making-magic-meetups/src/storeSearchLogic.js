@@ -218,11 +218,20 @@ export async function runStoreSearch({ query, selectedStoreLocation, searchPlace
   // surface for "trading card game store" specifically.
   const locationSuffix = effectiveSelectedLocation ? ` ${effectiveSelectedLocation}` : '';
   const q = (suffix) => `${trimmedQuery}${locationSuffix} ${suffix}`;
-  const [gameStorePlaces, gameCenterPlaces, hobbyPlaces, gamingPlaces] = await Promise.all([
+  const [
+    gameStorePlaces,
+    gameCenterPlaces,
+    hobbyPlaces,
+    gamingPlaces,
+    tcgPlaces,
+    cardShopPlaces
+  ] = await Promise.all([
     safeSearchPlaces(q('game store'), { coordinate: seedCoord }),
     safeSearchPlaces(q('game center'), { coordinate: seedCoord }),
     safeSearchPlaces(q('hobby shop'), { coordinate: seedCoord }),
-    safeSearchPlaces(q('gaming'), { coordinate: seedCoord })
+    safeSearchPlaces(q('gaming'), { coordinate: seedCoord }),
+    safeSearchPlaces(q('tcg'), { coordinate: seedCoord }),
+    safeSearchPlaces(q('card shop'), { coordinate: seedCoord })
   ]);
 
   // Debug: log names from each parallel search so we can trace missing stores.
@@ -230,15 +239,22 @@ export async function runStoreSearch({ query, selectedStoreLocation, searchPlace
   console.log('[runStoreSearch] game center:', gameCenterPlaces.map((p) => p?.name));
   console.log('[runStoreSearch] hobby shop:', hobbyPlaces.map((p) => p?.name));
   console.log('[runStoreSearch] gaming:', gamingPlaces.map((p) => p?.name));
+  console.log('[runStoreSearch] tcg:', tcgPlaces.map((p) => p?.name));
+  console.log('[runStoreSearch] card shop:', cardShopPlaces.map((p) => p?.name));
 
-  const stores = rankStores([
-    ...effectivePrimaryPlaces,
-    ...effectiveFallbackPlaces,
-    ...gameStorePlaces,
-    ...gameCenterPlaces,
-    ...hobbyPlaces,
-    ...gamingPlaces
-  ]);
+  const stores = rankStores(
+    [
+      ...effectivePrimaryPlaces,
+      ...effectiveFallbackPlaces,
+      ...gameStorePlaces,
+      ...gameCenterPlaces,
+      ...hobbyPlaces,
+      ...gamingPlaces,
+      ...tcgPlaces,
+      ...cardShopPlaces
+    ],
+    10
+  );
   let feedback = '';
   if (!stores.length) {
     feedback =
