@@ -10,23 +10,22 @@ export function buildTcgQuery(query, selectedStoreLocation) {
   return `${baseQuery}${locationSuffix} trading card game store`.trim();
 }
 
-// Returns true only when Apple Maps has explicitly tagged the place as a
-// gaming / hobby / comic / toy store via the subtitle or POI category fields.
-// The store name is intentionally NOT checked here — we rely on Apple's label.
+// Returns true for actual gaming businesses — excludes cities and areas.
+// Apple does NOT populate subtitle; the only tag they give is category: "Store"
+// for real businesses vs. undefined for geographic places like "Seattle, WA".
+// We also accept results where the name itself contains gaming keywords.
 export function isTaggedAsGamingStore(place) {
-  const subtitle = String(place?.subtitle || '').toLowerCase();
+  const name = String(place?.name || '').toLowerCase();
   const category = String(
     place?.pointOfInterestCategory || place?.poiCategory || place?.category || ''
   ).toLowerCase();
-  const categoryList = Array.isArray(place?.pointOfInterestCategories)
-    ? place.pointOfInterestCategories.map((value) => String(value || '').toLowerCase()).join(' ')
-    : '';
 
-  const appleTag = [subtitle, category, categoryList].join(' ');
-  // Broad match — Apple uses many variations ("Game Store", "Games", "Toy & Game",
-  // "Hobby", "Comic", "Entertainment", etc.). MapKit's search already narrowed
-  // results to gaming-related places; we just need to exclude generic businesses.
-  return /\b(games?|gaming|hobby|comic|toy|tcg|trading\s*card|collectible|tabletop|warhammer|pok[eé]mon|miniature|rpg|entertainment|arcade|card)\b/.test(appleTag);
+  // Apple's signal: "Store" = real business, undefined = city/area.
+  const isStoreBusiness = category === 'store';
+  // Name-based fallback for gaming stores Apple tagged with no category.
+  const hasGamingName = /\b(game|games|gaming|card|cards|tcg|magic|hobby|comic|toy|collectible|tabletop|warhammer|pok[eé]mon|miniature|rpg|arcade)\b/.test(name);
+
+  return isStoreBusiness || hasGamingName;
 }
 
 export function scoreStorePlace(place) {
@@ -142,16 +141,8 @@ export function rankStores(places, limit = 10) {
     dedupedPlaces.push(place);
   }
 
-  // Log what Apple returned so we can see subtitle/category values in the console.
-  if (typeof console !== 'undefined') {
-    dedupedPlaces.forEach((p) => {
-      console.log(
-        `[store] "${p?.name}" | subtitle: "${p?.subtitle}" | category: "${p?.pointOfInterestCategory ?? p?.poiCategory ?? p?.category}"`
-      );
-    });
-  }
-
   return dedupedPlaces
+    .filter(isTaggedAsGamingStore)                  // Exclude cities/areas
     .map(mapPlaceToStore)
     .sort((a, b) => b._relevanceScore - a._relevanceScore)
     .slice(0, limit)
