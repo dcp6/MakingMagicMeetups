@@ -1606,10 +1606,12 @@ export default function App() {
         }`
       );
       setCardInputText('');
-      // Clear staging rows after each save; user can upload again for the next action.
       setUploadedCards([]);
       setCardCostTotal(0);
       setShowingJustSavedCards(false);
+      if (route === 'my-cards') {
+        await loadUserCardsFromApi(authHeader);
+      }
     } catch (_error) {
       setCardUploadFeedback('Could not save card list right now.');
     } finally {
@@ -2181,198 +2183,10 @@ export default function App() {
             ) : null}
             {loggedInUser?.role === 'user' ? (
               <>
-                <form className="dashboard-tool" onSubmit={handleCardListUpload}>
-                  <label htmlFor="card-list-input">Magic: The Gathering card list</label>
-                  <textarea
-                    id="card-list-input"
-                    placeholder="Example: Black Lotus&#10;Lightning Bolt&#10;Sol Ring"
-                    value={cardInputText}
-                    onChange={(event) => {
-                      setCardInputText(event.target.value);
-                      setShowingJustSavedCards(false);
-                    }}
-                    rows={8}
-                  />
-                  <button type="submit">Upload Card List</button>
-                </form>
-                {cardUploadFeedback ? <p className="notice">{cardUploadFeedback}</p> : null}
-                {isCardPriceLoading ? <p className="notice subtle">Loading prices from Scryfall...</p> : null}
-                {uploadedCards.length > 0 ? (
-                  <div className="card-upload-results">
-                    <h2>{showingJustSavedCards ? 'Just Saved Cards' : 'Uploaded Cards'}</h2>
-                    <div className="dashboard-actions">
-                      {!showingJustSavedCards ? (
-                        <button
-                          type="button"
-                          className="action-button primary"
-                          onClick={() => handleSaveList({ mode: 'add' })}
-                          disabled={isCardPriceLoading || isCardsSaving}
-                        >
-                          {isCardsSaving ? 'Saving...' : 'Save To My Cards'}
-                        </button>
-                      ) : null}
-                      <label className="sort-control">
-                        <span className="sort-label">Sort by</span>
-                        <select
-                          className="sort-select"
-                          value={cardSortMode}
-                          onChange={(event) => setCardSortMode(event.target.value)}
-                        >
-                          <option value="upload">Current order</option>
-                          <option value="alpha">Name (A-Z)</option>
-                          <option value="tcgLowDesc">TCG low (High-Low)</option>
-                          <option value="tcgLowAsc">TCG low (Low-High)</option>
-                        </select>
-                      </label>
-                    </div>
-                    {renderMobileImageOnlyCards(
-                      dashboardSortedPairs,
-                      dashboardMobileSelectedCardKey,
-                      setDashboardMobileSelectedCardKey,
-                      'TCGPlayer Low',
-                      (card) => card.tcgLow || 'N/A'
-                    )}
-                    <table className="price-table my-cards-saved-table desktop-table-only">
-                      <thead>
-                        <tr>
-                          <th>Pic</th>
-                          <th className="mobile-hide-saved">Card</th>
-                          <th className="mobile-hide-saved">Version</th>
-                          <th>Qty</th>
-                          <th>TCGPlayer Low</th>
-                          <th className="mobile-hide-saved">Line Total</th>
-                          <th>Status</th>
-                          <th className="mobile-hide-saved">Links / Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {dashboardSortedPairs.map(
-                          ({ card, index }) => (
-                            <tr key={`${card.scryfallId || card.inputName || card.resolvedName}-${index}`}>
-                            <td>
-                              {card.imageSmall ? (
-                                <div className="thumb-wrap">
-                                  <img
-                                    className="card-thumb"
-                                    src={card.imageSmall}
-                                    alt={card.resolvedName}
-                                    loading="lazy"
-                                  />
-                                  {card.imageNormal || card.imageSmall ? (
-                                    <img
-                                      className="card-thumb-preview front"
-                                      src={card.imageNormal || card.imageSmall}
-                                      alt=""
-                                      loading="lazy"
-                                    />
-                                  ) : null}
-                                  {card.imageNormalBack || card.imageSmallBack ? (
-                                    <img
-                                      className="card-thumb-preview back"
-                                      src={card.imageNormalBack || card.imageSmallBack}
-                                      alt=""
-                                      loading="lazy"
-                                    />
-                                  ) : null}
-                                </div>
-                              ) : null}
-                            </td>
-                            <td className="mobile-hide-saved">{card.resolvedName}</td>
-                            <td className="mobile-hide-saved">
-                              <button
-                                type="button"
-                                className="version-button"
-                                onClick={() =>
-                                  loadVersionOptionsFor(
-                                    card.scryfallId || card.resolvedName || card.inputName,
-                                    card.resolvedName || card.inputName
-                                  )
-                                }
-                              >
-                                {card.setCode && card.collectorNumber
-                                  ? `${card.setCode.toUpperCase()} #${card.collectorNumber}`
-                                  : 'Choose'}
-                              </button>
-                              {versionLoadingKey ===
-                              (card.scryfallId || card.resolvedName || card.inputName) ? (
-                                <div className="version-picker">Loading...</div>
-                              ) : null}
-                              {versionOptionsByKey[
-                                card.scryfallId || card.resolvedName || card.inputName
-                              ]?.length ? (
-                                <div className="version-picker">
-                                  <select
-                                    value={card.scryfallId || ''}
-                                    onChange={(event) =>
-                                      handleVersionChange(index, event.target.value)
-                                    }
-                                  >
-                                    {versionOptionsByKey[
-                                      card.scryfallId || card.resolvedName || card.inputName
-                                    ].map((option) => (
-                                      <option key={option.id} value={option.id}>
-                                        {option.set.toUpperCase()} #{option.collectorNumber} ·{' '}
-                                        {option.setName} · {option.releasedAt}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                              ) : null}
-                            </td>
-                            <td>
-                              <input
-                                className="qty-input"
-                                type="number"
-                                min={0}
-                                step={1}
-                                value={card.quantity}
-                                onChange={(event) => handleQuantityChange(index, event.target.value)}
-                              />
-                            </td>
-                            <td>{card.tcgLow}</td>
-                            <td className="mobile-hide-saved">
-                              {card.lineTotalUsd !== null
-                                ? `$${card.lineTotalUsd.toFixed(2)}`
-                                : 'N/A'}
-                            </td>
-                            <td className="requesting-cell">
-                              <select
-                                className="market-status-select"
-                                value={card.marketStatus || 'have'}
-                                onChange={(event) => handleMarketStatusChange(index, event.target.value)}
-                                aria-label={`Status ${card.resolvedName}`}
-                              >
-                                <option value="have">Owned</option>
-                                <option value="requesting">Wants</option>
-                                <option value="offering">Giving</option>
-                              </select>
-                            </td>
-                            <td>
-                              {card.tcgUrl ? (
-                                <a href={card.tcgUrl} target="_blank" rel="noreferrer">
-                                  TCGPlayer
-                                </a>
-                              ) : card.error ? (
-                                card.error
-                              ) : (
-                                'No link'
-                              )}
-                            </td>
-                          </tr>
-                          )
-                        )}
-                      </tbody>
-                      <tfoot>
-                        <tr>
-                          <th colSpan={5}>Total</th>
-                          <th>${cardCostTotal.toFixed(2)}</th>
-                          <th />
-                          <th />
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                ) : null}
+                <p>
+                  Upload and manage your card list on the{' '}
+                  <a href="#/my-cards">My Cards</a> page.
+                </p>
               </>
             ) : null}
           </section>
@@ -2413,7 +2227,129 @@ export default function App() {
               <p>Please log in with a user account to view your saved card list.</p>
             ) : (
               <>
-                <p>This is your saved card database (permanent storage). You can edit and save.</p>
+                <form className="dashboard-tool" onSubmit={handleCardListUpload}>
+                  <label htmlFor="card-list-input">Add cards to My Cards</label>
+                  <textarea
+                    id="card-list-input"
+                    placeholder="Example: Black Lotus&#10;Lightning Bolt&#10;Sol Ring"
+                    value={cardInputText}
+                    onChange={(event) => {
+                      setCardInputText(event.target.value);
+                      setShowingJustSavedCards(false);
+                    }}
+                    rows={5}
+                  />
+                  <button type="submit" disabled={isCardPriceLoading}>Upload Card List</button>
+                </form>
+                {cardUploadFeedback ? <p className="notice">{cardUploadFeedback}</p> : null}
+                {isCardPriceLoading ? <p className="notice subtle">Loading prices from Scryfall...</p> : null}
+                {cardInputText && uploadedCards.length > 0 ? (
+                  <div className="card-upload-results">
+                    <h2>Uploaded Cards</h2>
+                    <div className="dashboard-actions">
+                      <button
+                        type="button"
+                        className="action-button primary"
+                        onClick={() => handleSaveList({ mode: 'add' })}
+                        disabled={isCardPriceLoading || isCardsSaving}
+                      >
+                        {isCardsSaving ? 'Saving...' : 'Save To My Cards'}
+                      </button>
+                      <label className="sort-control">
+                        <span className="sort-label">Sort by</span>
+                        <select
+                          className="sort-select"
+                          value={cardSortMode}
+                          onChange={(event) => setCardSortMode(event.target.value)}
+                        >
+                          <option value="upload">Current order</option>
+                          <option value="alpha">Name (A-Z)</option>
+                          <option value="tcgLowDesc">TCG low (High-Low)</option>
+                          <option value="tcgLowAsc">TCG low (Low-High)</option>
+                        </select>
+                      </label>
+                    </div>
+                    {renderMobileImageOnlyCards(
+                      dashboardSortedPairs,
+                      dashboardMobileSelectedCardKey,
+                      setDashboardMobileSelectedCardKey,
+                      'TCGPlayer Low',
+                      (card) => card.tcgLow || 'N/A'
+                    )}
+                    <table className="price-table my-cards-saved-table desktop-table-only">
+                      <thead>
+                        <tr>
+                          <th>Pic</th>
+                          <th className="mobile-hide-saved">Card</th>
+                          <th className="mobile-hide-saved">Version</th>
+                          <th>Qty</th>
+                          <th>TCGPlayer Low</th>
+                          <th className="mobile-hide-saved">Line Total</th>
+                          <th>Status</th>
+                          <th className="mobile-hide-saved">Links</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dashboardSortedPairs.map(({ card, index }) => (
+                          <tr key={`${card.scryfallId || card.inputName || card.resolvedName}-${index}`}>
+                            <td>
+                              {card.imageSmall ? (
+                                <div className="thumb-wrap">
+                                  <img className="card-thumb" src={card.imageSmall} alt={card.resolvedName} loading="lazy" />
+                                  {card.imageNormal || card.imageSmall ? (
+                                    <img className="card-thumb-preview front" src={card.imageNormal || card.imageSmall} alt="" loading="lazy" />
+                                  ) : null}
+                                  {card.imageNormalBack || card.imageSmallBack ? (
+                                    <img className="card-thumb-preview back" src={card.imageNormalBack || card.imageSmallBack} alt="" loading="lazy" />
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td className="mobile-hide-saved">{card.resolvedName}</td>
+                            <td className="mobile-hide-saved">
+                              <button type="button" className="version-button" onClick={() => loadVersionOptionsFor(card.scryfallId || card.resolvedName || card.inputName, card.resolvedName || card.inputName)}>
+                                {card.setCode && card.collectorNumber ? `${card.setCode.toUpperCase()} #${card.collectorNumber}` : 'Choose'}
+                              </button>
+                              {versionLoadingKey === (card.scryfallId || card.resolvedName || card.inputName) ? <div className="version-picker">Loading...</div> : null}
+                              {versionOptionsByKey[card.scryfallId || card.resolvedName || card.inputName]?.length ? (
+                                <div className="version-picker">
+                                  <select value={card.scryfallId || ''} onChange={(event) => handleVersionChange(index, event.target.value)}>
+                                    {versionOptionsByKey[card.scryfallId || card.resolvedName || card.inputName].map((option) => (
+                                      <option key={option.id} value={option.id}>
+                                        {option.set.toUpperCase()} #{option.collectorNumber} · {option.setName} · {option.releasedAt}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              ) : null}
+                            </td>
+                            <td>
+                              <input className="qty-input" type="number" min={0} step={1} value={card.quantity} onChange={(event) => handleQuantityChange(index, event.target.value)} />
+                            </td>
+                            <td>{card.tcgLow}</td>
+                            <td className="mobile-hide-saved">{card.lineTotalUsd !== null ? `$${card.lineTotalUsd.toFixed(2)}` : 'N/A'}</td>
+                            <td className="requesting-cell">
+                              <select className="market-status-select" value={card.marketStatus || 'have'} onChange={(event) => handleMarketStatusChange(index, event.target.value)} aria-label={`Status ${card.resolvedName}`}>
+                                <option value="have">Owned</option>
+                                <option value="requesting">Wants</option>
+                                <option value="offering">Giving</option>
+                              </select>
+                            </td>
+                            <td>{card.tcgUrl ? <a href={card.tcgUrl} target="_blank" rel="noreferrer">TCGPlayer</a> : card.error ? card.error : 'No link'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <th colSpan={5}>Total</th>
+                          <th>${cardCostTotal.toFixed(2)}</th>
+                          <th /><th />
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                ) : null}
+                <p>Your saved card database (permanent storage). Edit inline and save.</p>
                 <div className="dashboard-actions">
                   <button
                     type="button"
@@ -2445,8 +2381,6 @@ export default function App() {
                     </select>
                   </label>
                 </div>
-                {cardUploadFeedback ? <p className="notice">{cardUploadFeedback}</p> : null}
-                {isCardPriceLoading ? <p className="notice subtle">Loading prices from Scryfall...</p> : null}
                 {uploadedCards.length > 0 ? (
                   <div className="card-upload-results">
                     <h2>Saved Cards</h2>
