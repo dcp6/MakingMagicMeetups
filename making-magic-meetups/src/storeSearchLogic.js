@@ -146,6 +146,16 @@ export function rankStores(places, limit = 10) {
     dedupedPlaces.push(place);
   }
 
+  // Debug: log every candidate and whether it passed the gaming-store filter.
+  console.log(
+    '[rankStores] raw candidates:',
+    dedupedPlaces.map((p) => ({
+      name: p?.name,
+      category: p?.pointOfInterestCategory ?? p?.poiCategory ?? p?.category ?? undefined,
+      passed: isTaggedAsGamingStore(p)
+    }))
+  );
+
   return dedupedPlaces
     .filter(isTaggedAsGamingStore)                  // Exclude cities/areas
     .map(mapPlaceToStore)
@@ -207,18 +217,27 @@ export async function runStoreSearch({ query, selectedStoreLocation, searchPlace
   // Run broader searches in parallel to catch stores that MapKit might not
   // surface for "trading card game store" specifically.
   const locationSuffix = effectiveSelectedLocation ? ` ${effectiveSelectedLocation}` : '';
-  const [gameStorePlaces, gameCenterPlaces, hobbyPlaces] = await Promise.all([
-    safeSearchPlaces(`${trimmedQuery}${locationSuffix} game store`, { coordinate: seedCoord }),
-    safeSearchPlaces(`${trimmedQuery}${locationSuffix} game center`, { coordinate: seedCoord }),
-    safeSearchPlaces(`${trimmedQuery}${locationSuffix} hobby shop`, { coordinate: seedCoord })
+  const q = (suffix) => `${trimmedQuery}${locationSuffix} ${suffix}`;
+  const [gameStorePlaces, gameCenterPlaces, hobbyPlaces, gamingPlaces] = await Promise.all([
+    safeSearchPlaces(q('game store'), { coordinate: seedCoord }),
+    safeSearchPlaces(q('game center'), { coordinate: seedCoord }),
+    safeSearchPlaces(q('hobby shop'), { coordinate: seedCoord }),
+    safeSearchPlaces(q('gaming'), { coordinate: seedCoord })
   ]);
+
+  // Debug: log names from each parallel search so we can trace missing stores.
+  console.log('[runStoreSearch] game store:', gameStorePlaces.map((p) => p?.name));
+  console.log('[runStoreSearch] game center:', gameCenterPlaces.map((p) => p?.name));
+  console.log('[runStoreSearch] hobby shop:', hobbyPlaces.map((p) => p?.name));
+  console.log('[runStoreSearch] gaming:', gamingPlaces.map((p) => p?.name));
 
   const stores = rankStores([
     ...effectivePrimaryPlaces,
     ...effectiveFallbackPlaces,
     ...gameStorePlaces,
     ...gameCenterPlaces,
-    ...hobbyPlaces
+    ...hobbyPlaces,
+    ...gamingPlaces
   ]);
   let feedback = '';
   if (!stores.length) {
