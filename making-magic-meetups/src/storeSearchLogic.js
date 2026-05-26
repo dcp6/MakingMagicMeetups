@@ -190,7 +190,23 @@ export async function runStoreSearch({ query, selectedStoreLocation, searchPlace
     effectiveTcgQuery !== trimmedQuery && effectivePrimaryPlaces.length < 4
       ? await safeSearchPlaces(trimmedQuery)
       : [];
-  const stores = rankStores([...effectivePrimaryPlaces, ...effectiveFallbackPlaces]);
+
+  // Run broader searches in parallel to catch stores like "95 Game Center"
+  // that MapKit might not surface for "trading card game store" specifically.
+  const locationSuffix = effectiveSelectedLocation ? ` ${effectiveSelectedLocation}` : '';
+  const [gameStorePlaces, gameCenterPlaces, hobbyPlaces] = await Promise.all([
+    safeSearchPlaces(`${trimmedQuery}${locationSuffix} game store`),
+    safeSearchPlaces(`${trimmedQuery}${locationSuffix} game center`),
+    safeSearchPlaces(`${trimmedQuery}${locationSuffix} hobby shop`)
+  ]);
+
+  const stores = rankStores([
+    ...effectivePrimaryPlaces,
+    ...effectiveFallbackPlaces,
+    ...gameStorePlaces,
+    ...gameCenterPlaces,
+    ...hobbyPlaces
+  ]);
   let feedback = '';
   if (!stores.length) {
     feedback =
