@@ -8,8 +8,11 @@ import {
 } from './tableLogic';
 import { runStoreSearch } from './storeSearchLogic';
 
-const canonicalApiBaseUrl = 'https://makingmagicmeetups.onrender.com';
-const legacyApiBaseUrls = new Set(['https://makingmagicmeetups-api.onrender.com']);
+const canonicalApiBaseUrl = 'https://makingmagicmeetups-1.onrender.com';
+const legacyApiBaseUrls = new Set([
+  'https://makingmagicmeetups-api.onrender.com',
+  'https://makingmagicmeetups.onrender.com'
+]);
 
 function normalizeApiBaseUrl(value) {
   const normalized = String(value || '').trim().replace(/\/+$/, '');
