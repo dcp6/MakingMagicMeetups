@@ -329,10 +329,7 @@ export default function App() {
   }, [route, loggedInUser, loginAuthHeader, apiBaseUrl]);
 
   useEffect(() => {
-    if (route !== 'settings') {
-      return;
-    }
-    if (!loggedInUser || loggedInUser.role !== 'user') {
+    if (route !== 'settings' && route !== 'dashboard') {
       return;
     }
 
@@ -442,11 +439,6 @@ export default function App() {
   async function handleStoreSearch(event) {
     event.preventDefault();
     setStoreSearchFeedback('');
-
-    if (!loggedInUser || loggedInUser.role !== 'user') {
-      setStoreSearchFeedback('Please log in with a user account.');
-      return;
-    }
 
     const query = storeSearchQuery.trim();
     if (!query) {
@@ -2103,7 +2095,7 @@ export default function App() {
             <p>
               {loggedInUser?.role === 'admin'
                 ? 'Admin view: account credentials and users.'
-                : 'This is your dashboard workspace. Upload your card list below.'}
+                : 'Find a Magic store near you, or manage your cards on the My Cards page.'}
             </p>
             {loggedInUser?.role === 'admin' ? (
               <div className="card-upload-results">
@@ -2182,13 +2174,94 @@ export default function App() {
               </div>
             ) : null}
             {loggedInUser?.role === 'user' ? (
-              <>
-                <p>
-                  Upload and manage your card list on the{' '}
-                  <a href="#/my-cards">My Cards</a> page.
-                </p>
-              </>
+              <p>
+                Upload and manage your card list on the{' '}
+                <a href="#/my-cards">My Cards</a> page.
+              </p>
             ) : null}
+
+            <div className="store-locator-section">
+              <h2>Find a Magic Store</h2>
+              <form className="join-form" onSubmit={handleStoreSearch}>
+                <label htmlFor="dashboard-store-search" className="sr-only">Search stores</label>
+                <input
+                  id="dashboard-store-search"
+                  type="text"
+                  placeholder="Search by store name or city"
+                  value={storeSearchQuery}
+                  onChange={(event) => setStoreSearchQuery(event.target.value)}
+                />
+                <button type="submit" disabled={isStoreSearching}>
+                  {isStoreSearching ? 'Searching...' : 'Search'}
+                </button>
+              </form>
+
+              {storeLocationOptions.length ? (
+                <div className="store-location-options">
+                  <p className="settings-store-address">Narrow by location:</p>
+                  <div className="store-location-option-list">
+                    {storeLocationOptions.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className={option === selectedStoreLocation ? 'store-location-option active' : 'store-location-option'}
+                        onClick={() => {
+                          setSelectedStoreLocation(option);
+                          setStoreSearchFeedback(`Location set to ${option}. Click Search.`);
+                        }}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                    {selectedStoreLocation ? (
+                      <button
+                        type="button"
+                        className="store-location-option"
+                        onClick={() => {
+                          setSelectedStoreLocation('');
+                          setStoreSearchFeedback('Location filter cleared.');
+                        }}
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {!isMapKitReady && storeSearchQuery ? (
+                <p className="notice subtle">Store search is loading…</p>
+              ) : null}
+              {storeSearchFeedback ? <p className="notice">{storeSearchFeedback}</p> : null}
+
+              {storeSearchResults.length ? (
+                <div className="store-results">
+                  {storeSearchResults.map((store) => (
+                    <div key={store.placeId || store.name} className="store-result">
+                      <div className="store-result-main">
+                        <p className="store-result-name">{store.name}</p>
+                        {store.address ? <p className="store-result-address">{store.address}</p> : null}
+                        {store.phone ? <p className="store-result-address">{store.phone}</p> : null}
+                        {store.website ? (
+                          <a href={store.website} target="_blank" rel="noreferrer">Website</a>
+                        ) : store.url ? (
+                          <a href={store.url} target="_blank" rel="noreferrer">Google Listing</a>
+                        ) : null}
+                      </div>
+                      {loggedInUser?.role === 'user' ? (
+                        <button
+                          type="button"
+                          onClick={() => savePreferredStore(store)}
+                          disabled={isPreferredStoreSaving || !store.placeId}
+                        >
+                          {isPreferredStoreSaving ? 'Saving...' : 'Set as My Store'}
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </section>
         </main>
         {loginServiceIndicator}
