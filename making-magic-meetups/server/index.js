@@ -12,7 +12,7 @@ import { getPostgresConnectionString, isPostgresConfigured } from './db/postgres
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dbDir =
-  process.env.DATA_DIR || (process.env.RENDER ? '/var/data' : path.join(__dirname, '..', 'data'));
+  process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const dbPath = path.join(dbDir, 'users.db');
 const port = process.env.PORT ? Number(process.env.PORT) : 8787;
 const frontendOrigins = String(process.env.FRONTEND_ORIGIN || 'https://dcp6.github.io')
