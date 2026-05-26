@@ -159,22 +159,31 @@ export function rankStores(places, limit = 10) {
 
 export async function runStoreSearch({ query, selectedStoreLocation, searchPlaces }) {
   const trimmedQuery = String(query || '').trim();
-  async function safeSearchPlaces(searchText) {
+
+  // searchPlaces optionally accepts { coordinate } as a second arg so MapKit
+  // can anchor results to the searched city rather than the user's device location.
+  async function safeSearchPlaces(searchText, opts = {}) {
     try {
-      const result = await searchPlaces(searchText);
+      const result = await searchPlaces(searchText, opts);
       return Array.isArray(result) ? result : [];
     } catch (_error) {
       return [];
     }
   }
 
+  // Seed search (no anchor) — used only to derive location options and a
+  // geographic anchor coordinate for all subsequent queries.
   const locationSeedPlaces = await safeSearchPlaces(trimmedQuery);
 
+  // Extract a coordinate from the first seed result so downstream searches
+  // are anchored to the searched city, not the user's device location.
+  const seedCoord = locationSeedPlaces[0]?.coordinate ?? null;
+
   const initialTcgQuery = buildTcgQuery(trimmedQuery, selectedStoreLocation);
-  const primaryPlaces = await safeSearchPlaces(initialTcgQuery);
+  const primaryPlaces = await safeSearchPlaces(initialTcgQuery, { coordinate: seedCoord });
   const fallbackPlaces =
     initialTcgQuery !== trimmedQuery && primaryPlaces.length < 4
-      ? await safeSearchPlaces(trimmedQuery)
+      ? await safeSearchPlaces(trimmedQuery, { coordinate: seedCoord })
       : [];
 
   const locationOptions = deriveLocationOptions(
@@ -187,19 +196,21 @@ export async function runStoreSearch({ query, selectedStoreLocation, searchPlace
   );
   const effectiveTcgQuery = buildTcgQuery(trimmedQuery, effectiveSelectedLocation);
   const effectivePrimaryPlaces =
-    effectiveTcgQuery === initialTcgQuery ? primaryPlaces : await safeSearchPlaces(effectiveTcgQuery);
+    effectiveTcgQuery === initialTcgQuery
+      ? primaryPlaces
+      : await safeSearchPlaces(effectiveTcgQuery, { coordinate: seedCoord });
   const effectiveFallbackPlaces =
     effectiveTcgQuery !== trimmedQuery && effectivePrimaryPlaces.length < 4
-      ? await safeSearchPlaces(trimmedQuery)
+      ? await safeSearchPlaces(trimmedQuery, { coordinate: seedCoord })
       : [];
 
   // Run broader searches in parallel to catch stores that MapKit might not
   // surface for "trading card game store" specifically.
   const locationSuffix = effectiveSelectedLocation ? ` ${effectiveSelectedLocation}` : '';
   const [gameStorePlaces, gameCenterPlaces, hobbyPlaces] = await Promise.all([
-    safeSearchPlaces(`${trimmedQuery}${locationSuffix} game store`),
-    safeSearchPlaces(`${trimmedQuery}${locationSuffix} game center`),
-    safeSearchPlaces(`${trimmedQuery}${locationSuffix} hobby shop`)
+    safeSearchPlaces(`${trimmedQuery}${locationSuffix} game store`, { coordinate: seedCoord }),
+    safeSearchPlaces(`${trimmedQuery}${locationSuffix} game center`, { coordinate: seedCoord }),
+    safeSearchPlaces(`${trimmedQuery}${locationSuffix} hobby shop`, { coordinate: seedCoord })
   ]);
 
   const stores = rankStores([

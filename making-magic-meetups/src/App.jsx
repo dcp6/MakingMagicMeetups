@@ -547,8 +547,17 @@ export default function App() {
       // Ignore cache parse/storage errors and continue with live search.
     }
 
-    async function searchMapkitPlaces(searchText) {
-      const search = new window.mapkit.Search();
+    async function searchMapkitPlaces(searchText, { coordinate } = {}) {
+      // Pass the coordinate as a hint so MapKit anchors results to the
+      // searched city rather than the user's device location.
+      const searchOptions = {};
+      if (coordinate && Number.isFinite(coordinate.latitude) && Number.isFinite(coordinate.longitude)) {
+        searchOptions.coordinate = new window.mapkit.Coordinate(
+          coordinate.latitude,
+          coordinate.longitude
+        );
+      }
+      const search = new window.mapkit.Search(searchOptions);
       const data = await new Promise((resolve, reject) => {
         search.search(searchText, (error, response) => {
           if (error) {
