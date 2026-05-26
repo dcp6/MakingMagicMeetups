@@ -131,6 +131,10 @@ export default function App() {
   const storeMapContainerRef = useRef(null);
   const storeMapRef = useRef(null);
   const storeMapMarkerRef = useRef(null);
+  const dashboardResultMapContainerRef = useRef(null);
+  const dashboardResultMapRef = useRef(null);
+  const dashboardResultMapMarkerRef = useRef(null);
+  const [selectedResultStore, setSelectedResultStore] = useState(null);
   const [dashboardMobileSelectedCardKey, setDashboardMobileSelectedCardKey] = useState('');
   const [savedMobileSelectedCardKey, setSavedMobileSelectedCardKey] = useState('');
   const [requestingMobileSelectedCardKey, setRequestingMobileSelectedCardKey] = useState('');
@@ -458,6 +462,49 @@ export default function App() {
     storeMapMarkerRef.current = marker;
   }, [route, isMapKitReady, selectedStoreCoordinate, preferredStore]);
 
+  useEffect(() => {
+    if (route !== 'dashboard' || !isMapKitReady || !selectedResultStore) {
+      return;
+    }
+    const latitude = Number(selectedResultStore.latitude);
+    const longitude = Number(selectedResultStore.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return;
+    }
+    if (!dashboardResultMapContainerRef.current) {
+      return;
+    }
+
+    const coordinate = new window.mapkit.Coordinate(latitude, longitude);
+    const region = new window.mapkit.CoordinateRegion(
+      coordinate,
+      new window.mapkit.CoordinateSpan(0.02, 0.02)
+    );
+
+    if (!dashboardResultMapRef.current) {
+      dashboardResultMapRef.current = new window.mapkit.Map(dashboardResultMapContainerRef.current, {
+        showsCompass: window.mapkit.FeatureVisibility.Hidden,
+        showsZoomControl: true,
+        isRotationEnabled: false,
+        isScrollEnabled: true
+      });
+    }
+
+    const map = dashboardResultMapRef.current;
+    map.region = region;
+
+    if (dashboardResultMapMarkerRef.current) {
+      map.removeAnnotation(dashboardResultMapMarkerRef.current);
+    }
+
+    const marker = new window.mapkit.MarkerAnnotation(coordinate, {
+      title: selectedResultStore.name || 'Store',
+      subtitle: selectedResultStore.address || ''
+    });
+    map.addAnnotation(marker);
+    dashboardResultMapMarkerRef.current = marker;
+  }, [route, isMapKitReady, selectedResultStore]);
+
   async function handleStoreSearch(event) {
     event.preventDefault();
     setStoreSearchFeedback('');
@@ -525,6 +572,7 @@ export default function App() {
       setSelectedStoreLocation(searchResult.effectiveSelectedLocation);
       setStoreSearchResults(searchResult.stores);
       setStoreSearchFeedback(searchResult.feedback);
+      setSelectedResultStore(searchResult.stores[0] ?? null);
 
       try {
         const rawCache = window.localStorage.getItem(storeSearchCacheStorageKey);
@@ -2257,30 +2305,47 @@ export default function App() {
               {storeSearchFeedback ? <p className="notice">{storeSearchFeedback}</p> : null}
 
               {storeSearchResults.length ? (
-                <div className="store-results">
-                  {storeSearchResults.map((store) => (
-                    <div key={store.placeId || store.name} className="store-result">
-                      <div className="store-result-main">
-                        <p className="store-result-name">{store.name}</p>
-                        {store.address ? <p className="store-result-address">{store.address}</p> : null}
-                        {store.phone ? <p className="store-result-address">{store.phone}</p> : null}
-                        {store.website ? (
-                          <a href={store.website} target="_blank" rel="noreferrer">Website</a>
-                        ) : store.url ? (
-                          <a href={store.url} target="_blank" rel="noreferrer">Google Listing</a>
-                        ) : null}
-                      </div>
-                      {loggedInUser?.role === 'user' ? (
-                        <button
-                          type="button"
-                          onClick={() => savePreferredStore(store)}
-                          disabled={isPreferredStoreSaving || !store.placeId}
+                <div className="store-results-with-map">
+                  <div className="store-results">
+                    {storeSearchResults.map((store) => {
+                      const isSelected = selectedResultStore === store ||
+                        (selectedResultStore?.placeId && selectedResultStore.placeId === store.placeId);
+                      return (
+                        <div
+                          key={store.placeId || store.name}
+                          className={`store-result${isSelected ? ' store-result-selected' : ''}`}
+                          onClick={() => setSelectedResultStore(store)}
+                          style={{ cursor: 'pointer' }}
                         >
-                          {isPreferredStoreSaving ? 'Saving...' : 'Set as My Store'}
-                        </button>
-                      ) : null}
+                          <div className="store-result-main">
+                            <p className="store-result-name">{store.name}</p>
+                            {store.address ? <p className="store-result-address">{store.address}</p> : null}
+                            {store.phone ? <p className="store-result-address">{store.phone}</p> : null}
+                            {store.website ? (
+                              <a href={store.website} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Website</a>
+                            ) : store.url ? (
+                              <a href={store.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Maps Listing</a>
+                            ) : null}
+                          </div>
+                          {loggedInUser?.role === 'user' ? (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); savePreferredStore(store); }}
+                              disabled={isPreferredStoreSaving || !store.placeId}
+                            >
+                              {isPreferredStoreSaving ? 'Saving...' : 'Set as My Store'}
+                            </button>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {selectedResultStore && Number.isFinite(Number(selectedResultStore.latitude)) ? (
+                    <div className="store-result-map-wrap">
+                      <div ref={dashboardResultMapContainerRef} className="store-result-map" />
                     </div>
-                  ))}
+                  ) : null}
                 </div>
               ) : null}
             </div>
