@@ -340,19 +340,41 @@ export default function App() {
       return;
     }
 
-    if (!window.__makingMagicMapKitInited) {
-      window.__makingMagicMapKitInited = true;
-      mapkit.init({
-        authorizationCallback(done) {
-          fetch(`${apiBaseUrl}/api/mapkit/token`)
-            .then((response) => response.json())
-            .then((payload) => done(payload.token || ''))
-            .catch(() => done(''));
-        }
-      });
+    // If already initialized successfully, mark ready and return.
+    if (window.__makingMagicMapKitInited) {
+      setIsMapKitReady(true);
+      return;
     }
 
-    setIsMapKitReady(true);
+    // Pre-flight: verify the token endpoint works before initializing MapKit.
+    (async () => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/mapkit/token`);
+        const payload = await response.json().catch(() => ({}));
+        if (!payload.token) {
+          setIsMapKitReady(false);
+          setStoreSearchFeedback(
+            payload.error
+              ? `Store search unavailable: ${payload.error}`
+              : 'Store search unavailable: MapKit not configured on this server.'
+          );
+          return;
+        }
+        window.__makingMagicMapKitInited = true;
+        mapkit.init({
+          authorizationCallback(done) {
+            fetch(`${apiBaseUrl}/api/mapkit/token`)
+              .then((r) => r.json())
+              .then((p) => done(p.token || ''))
+              .catch(() => done(''));
+          }
+        });
+        setIsMapKitReady(true);
+      } catch (_error) {
+        setIsMapKitReady(false);
+        setStoreSearchFeedback('Could not reach MapKit token service. Store search unavailable.');
+      }
+    })();
   }, [route, loggedInUser, apiBaseUrl]);
 
   useEffect(() => {
