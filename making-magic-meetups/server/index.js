@@ -27,6 +27,7 @@ const defaultAllowedOrigins = [
 const adminApiKey = process.env.ADMIN_API_KEY || '';
 const adminUsername = process.env.ADMIN_USERNAME || 'admin';
 const adminPassword = process.env.ADMIN_PASSWORD || 'Magic.12345';
+// const foursquareApiKey = String(process.env.FOURSQUARE_API_KEY || '').trim();
 const mapkitTeamId = String(process.env.MAPKIT_TEAM_ID || '').trim();
 const mapkitKeyId = String(process.env.MAPKIT_KEY_ID || '').trim();
 const mapkitPrivateKeyRaw = String(process.env.MAPKIT_PRIVATE_KEY || '').trim();
@@ -1743,6 +1744,66 @@ app.get('/api/health', (_req, res) => {
     postgresConfigured: isPostgresEnabled
   });
 });
+
+/* Foursquare store search — commented out until API key is configured
+app.get('/api/stores/search', async (req, res) => {
+  if (!foursquareApiKey) {
+    return res.status(503).json({ error: 'Store search not configured (FOURSQUARE_API_KEY missing).' });
+  }
+
+  const near = String(req.query.near || '').trim();
+  if (!near) {
+    return res.status(400).json({ error: 'near query param is required.' });
+  }
+
+  try {
+    // Foursquare category IDs for gaming/hobby stores:
+    // 4bf58dd8d48988d1f1931735 = Toy / Game Store
+    // 4bf58dd8d48988d1f7941735 = Hobby Shop
+    // 52e81612bcbc57f1066b7a0d = Comic Shop
+    const categories = '4bf58dd8d48988d1f1931735,4bf58dd8d48988d1f7941735,52e81612bcbc57f1066b7a0d';
+    const fields = 'fsq_id,name,location,tel,website,geocodes';
+    const fsqUrl =
+      `https://api.foursquare.com/v3/places/search` +
+      `?query=trading+card+game+store` +
+      `&near=${encodeURIComponent(near)}` +
+      `&categories=${categories}` +
+      `&limit=20` +
+      `&fields=${fields}`;
+
+    const fsqResponse = await fetch(fsqUrl, {
+      headers: { Authorization: foursquareApiKey }
+    });
+
+    if (!fsqResponse.ok) {
+      const errBody = await fsqResponse.text().catch(() => '');
+      return res.status(502).json({ error: `Foursquare returned ${fsqResponse.status}.`, detail: errBody });
+    }
+
+    const fsqData = await fsqResponse.json();
+    const stores = (Array.isArray(fsqData.results) ? fsqData.results : [])
+      .map((place) => {
+        const loc = place.location || {};
+        const addressParts = [loc.address, loc.locality, loc.region].filter(Boolean);
+        return {
+          placeId: place.fsq_id || null,
+          name: place.name || null,
+          address: addressParts.join(', ') || null,
+          phone: place.tel || null,
+          website: place.website || null,
+          latitude: place.geocodes?.main?.latitude ?? null,
+          longitude: place.geocodes?.main?.longitude ?? null,
+          isActualStore: true
+        };
+      })
+      .filter((s) => s.name);
+
+    return res.json({ ok: true, stores });
+  } catch (_error) {
+    return res.status(500).json({ error: 'Store search failed.' });
+  }
+});
+*/
 
 app.get('/api/mapkit/token', (_req, res) => {
   if (!mapkitTeamId || !mapkitKeyId) {

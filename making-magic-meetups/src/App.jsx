@@ -563,6 +563,31 @@ export default function App() {
 
     setIsStoreSearching(true);
     try {
+      /* Foursquare search — commented out until API key is configured
+      const fsqResponse = await fetch(
+        `${apiBaseUrl}/api/stores/search?near=${encodeURIComponent(query)}`
+      ).catch(() => null);
+
+      if (fsqResponse && fsqResponse.ok) {
+        const fsqData = await fsqResponse.json().catch(() => null);
+        if (fsqData?.stores?.length) {
+          setStoreLocationOptions([]);
+          setSelectedStoreLocation('');
+          setStoreSearchResults(fsqData.stores);
+          setSelectedResultStore(fsqData.stores[0]);
+          setStoreSearchFeedback('');
+          return;
+        }
+        if (fsqData?.stores?.length === 0) {
+          setStoreSearchResults([]);
+          setSelectedResultStore(null);
+          setStoreSearchFeedback('No gaming stores found for that search. Try a different city or store name.');
+          return;
+        }
+      }
+      */
+
+      // MapKit search.
       const searchResult = await runStoreSearch({
         query,
         selectedStoreLocation,
@@ -588,19 +613,19 @@ export default function App() {
             feedback: searchResult.feedback
           }
         };
-
         const entries = Object.entries(nextCache).sort(
           (a, b) => Number(b?.[1]?.savedAt || 0) - Number(a?.[1]?.savedAt || 0)
         );
-        const trimmedEntries = entries.slice(0, 40);
-        const trimmedCache = Object.fromEntries(trimmedEntries);
-        window.localStorage.setItem(storeSearchCacheStorageKey, JSON.stringify(trimmedCache));
+        window.localStorage.setItem(
+          storeSearchCacheStorageKey,
+          JSON.stringify(Object.fromEntries(entries.slice(0, 40)))
+        );
       } catch (_error) {
-        // Ignore cache parse/storage errors.
+        // Ignore cache errors.
       }
     } catch (_error) {
       setStoreSearchResults([]);
-      setStoreSearchFeedback('Could not search stores. Check MapKit token/config and try again.');
+      setStoreSearchFeedback('Could not search stores. Try again.');
     } finally {
       setIsStoreSearching(false);
     }

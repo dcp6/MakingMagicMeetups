@@ -105,6 +105,9 @@ function mapPlaceToStore(place) {
   const latitude = Number(place?.coordinate?.latitude);
   const longitude = Number(place?.coordinate?.longitude);
   const relevanceScore = scoreStorePlace(place);
+  const appleCategory = String(
+    place?.pointOfInterestCategory || place?.poiCategory || place?.category || ''
+  ).toLowerCase();
   return {
     placeId,
     name,
@@ -114,9 +117,9 @@ function mapPlaceToStore(place) {
     phone,
     latitude: Number.isFinite(latitude) ? latitude : null,
     longitude: Number.isFinite(longitude) ? longitude : null,
-    // True when Apple's subtitle/category tags this as a gaming/hobby store.
-    // Used to gate the "Set as My Store" button — cities won't have this tag.
-    isActualStore: isTaggedAsGamingStore(place),
+    // True when Apple has tagged this as a real business ("Store").
+    // Cities and geographic areas have category undefined, so they're excluded.
+    isActualStore: appleCategory === 'store',
     _relevanceScore: relevanceScore
   };
 }
