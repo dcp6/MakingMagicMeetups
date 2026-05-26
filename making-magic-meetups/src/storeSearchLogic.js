@@ -66,7 +66,9 @@ export function resolveEffectiveSelectedLocation(selectedStoreLocation, location
   if (!selected) {
     return locationOptions.length === 1 ? locationOptions[0] : '';
   }
-  return locationOptions.includes(selected) ? selected : '';
+  const selectedLower = selected.toLowerCase();
+  const match = locationOptions.find((opt) => opt.toLowerCase() === selectedLower);
+  return match || '';
 }
 
 function mapPlaceToStore(place) {
