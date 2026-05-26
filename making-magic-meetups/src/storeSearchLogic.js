@@ -13,7 +13,8 @@ export function buildTcgQuery(query, selectedStoreLocation) {
 // Returns true for actual gaming businesses — excludes cities and areas.
 // Apple does NOT populate subtitle; the only tag they give is category: "Store"
 // for real businesses vs. undefined for geographic places like "Seattle, WA".
-// We also accept results where the name itself contains gaming keywords.
+// Name-based fallback uses specific compound phrases (not bare "game") so that
+// place names like "Wilmington Game" don't slip through.
 export function isTaggedAsGamingStore(place) {
   const name = String(place?.name || '').toLowerCase();
   const category = String(
@@ -22,8 +23,9 @@ export function isTaggedAsGamingStore(place) {
 
   // Apple's signal: "Store" = real business, undefined = city/area.
   const isStoreBusiness = category === 'store';
-  // Name-based fallback for gaming stores Apple tagged with no category.
-  const hasGamingName = /\b(game|games|gaming|card|cards|tcg|magic|hobby|comic|toy|collectible|tabletop|warhammer|pok[eé]mon|miniature|rpg|arcade)\b/.test(name);
+
+  // Name-based fallback: require specific gaming-business phrases, not bare keywords.
+  const hasGamingName = /\b(game\s*(center|store|shop|house|room|zone|hub|land|world|shack)|gaming\s*(center|store|shop|lounge|den)|tcg|trading\s*card|card\s*(game|shop|store|kingdom|palace|den|cave|vault|realm)|magic\s*(the\s*gathering|shop|store|card)|hobby\s*(store|shop|center|house)|comic\s*(store|shop|book)|warhammer|pok[eé]mon|miniatures?|tabletop|collectible)\b/.test(name);
 
   return isStoreBusiness || hasGamingName;
 }
@@ -194,8 +196,9 @@ export async function runStoreSearch({ query, selectedStoreLocation, searchPlace
   // Run broader searches in parallel to catch stores that MapKit might not
   // surface for "trading card game store" specifically.
   const locationSuffix = effectiveSelectedLocation ? ` ${effectiveSelectedLocation}` : '';
-  const [gameStorePlaces, hobbyPlaces] = await Promise.all([
+  const [gameStorePlaces, gameCenterPlaces, hobbyPlaces] = await Promise.all([
     safeSearchPlaces(`${trimmedQuery}${locationSuffix} game store`),
+    safeSearchPlaces(`${trimmedQuery}${locationSuffix} game center`),
     safeSearchPlaces(`${trimmedQuery}${locationSuffix} hobby shop`)
   ]);
 
@@ -203,6 +206,7 @@ export async function runStoreSearch({ query, selectedStoreLocation, searchPlace
     ...effectivePrimaryPlaces,
     ...effectiveFallbackPlaces,
     ...gameStorePlaces,
+    ...gameCenterPlaces,
     ...hobbyPlaces
   ]);
   let feedback = '';
