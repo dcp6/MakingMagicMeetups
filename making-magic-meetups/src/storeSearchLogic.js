@@ -10,9 +10,10 @@ export function buildTcgQuery(query, selectedStoreLocation) {
   return `${baseQuery}${locationSuffix} trading card game store`.trim();
 }
 
-export function scoreStorePlace(place) {
-  const name = String(place?.name || '').toLowerCase();
-  const address = String(place?.formattedAddress || place?.address || '').toLowerCase();
+// Returns true only when Apple Maps has explicitly tagged the place as a
+// gaming / hobby / comic / toy store via the subtitle or POI category fields.
+// The store name is intentionally NOT checked here — we rely on Apple's label.
+export function isTaggedAsGamingStore(place) {
   const subtitle = String(place?.subtitle || '').toLowerCase();
   const category = String(
     place?.pointOfInterestCategory || place?.poiCategory || place?.category || ''
@@ -21,29 +22,35 @@ export function scoreStorePlace(place) {
     ? place.pointOfInterestCategories.map((value) => String(value || '').toLowerCase()).join(' ')
     : '';
 
-  const text = [name, address, subtitle, category, categoryList].join(' ');
+  const appleTag = [subtitle, category, categoryList].join(' ');
+  return /\b(game\s*store|game\s*shop|gaming|hobby|comic|toy\s*store|collectibles?|tabletop|trading\s*card|tcg|card\s*shop|game_arcade|hobby_store|toy_store|warhammer|pokemon|miniatures?|rpg|entertainment)\b/.test(appleTag);
+}
+
+export function scoreStorePlace(place) {
+  const name = String(place?.name || '').toLowerCase();
+  const subtitle = String(place?.subtitle || '').toLowerCase();
+  const category = String(
+    place?.pointOfInterestCategory || place?.poiCategory || place?.category || ''
+  ).toLowerCase();
+  const categoryList = Array.isArray(place?.pointOfInterestCategories)
+    ? place.pointOfInterestCategories.map((value) => String(value || '').toLowerCase()).join(' ')
+    : '';
+
+  // Rank by specificity — MTG/TCG stores first, then broader gaming/hobby stores.
+  // Scoring is used for ordering; filtering is handled by isTaggedAsGamingStore.
+  const text = [name, subtitle, category, categoryList].join(' ');
   let score = 0;
 
-  // Tier 1 — definitive MTG/TCG stores
   if (/\b(mtg|magic the gathering|magic: the gathering)\b/.test(text)) {
     score += 10;
   }
   if (/\b(trading\s*card|trading\s*cards|tcg|card\s*shop)\b/.test(text)) {
     score += 8;
   }
-
-  // Tier 2 — broad gaming / hobby stores
   if (/\b(game\s*store|game\s*shop|board\s*game|comic|hobby|collectibles?|tabletop)\b/.test(text)) {
     score += 4;
   }
-
-  // Tier 3 — adjacent gaming keywords (warhammer, pokemon, rpg, etc.)
   if (/\b(gaming|warhammer|pokemon|pok[eé]mon|yugioh|yu-gi-oh|dungeon|miniatures?|rpg|anime)\b/.test(text)) {
-    score += 3;
-  }
-
-  // Tier 4 — Apple Maps POI category signals
-  if (/\b(game_arcade|toy_store|hobby_store|entertainment)\b/.test(category + ' ' + categoryList)) {
     score += 3;
   }
 
@@ -105,9 +112,9 @@ function mapPlaceToStore(place) {
     phone,
     latitude: Number.isFinite(latitude) ? latitude : null,
     longitude: Number.isFinite(longitude) ? longitude : null,
-    // Only gaming-identified results are allowed in the list; this flag drives
-    // the "Set as My Store" button in the UI.
-    isActualStore: relevanceScore > 0,
+    // All results in the list are Apple-tagged gaming stores; flag always true
+    // but kept so the UI "Set as My Store" button logic remains explicit.
+    isActualStore: true,
     _relevanceScore: relevanceScore
   };
 }
@@ -133,8 +140,8 @@ export function rankStores(places, limit = 10) {
   }
 
   return dedupedPlaces
+    .filter(isTaggedAsGamingStore)                  // Only Apple-tagged gaming stores
     .map(mapPlaceToStore)
-    .filter((store) => store._relevanceScore > 0)   // Only confirmed gaming stores
     .sort((a, b) => b._relevanceScore - a._relevanceScore)
     .slice(0, limit)
     .map((store) => {
