@@ -191,12 +191,11 @@ export async function runStoreSearch({ query, selectedStoreLocation, searchPlace
       ? await safeSearchPlaces(trimmedQuery)
       : [];
 
-  // Run broader searches in parallel to catch stores like "95 Game Center"
-  // that MapKit might not surface for "trading card game store" specifically.
+  // Run broader searches in parallel to catch stores that MapKit might not
+  // surface for "trading card game store" specifically.
   const locationSuffix = effectiveSelectedLocation ? ` ${effectiveSelectedLocation}` : '';
-  const [gameStorePlaces, gameCenterPlaces, hobbyPlaces] = await Promise.all([
+  const [gameStorePlaces, hobbyPlaces] = await Promise.all([
     safeSearchPlaces(`${trimmedQuery}${locationSuffix} game store`),
-    safeSearchPlaces(`${trimmedQuery}${locationSuffix} game center`),
     safeSearchPlaces(`${trimmedQuery}${locationSuffix} hobby shop`)
   ]);
 
@@ -204,7 +203,6 @@ export async function runStoreSearch({ query, selectedStoreLocation, searchPlace
     ...effectivePrimaryPlaces,
     ...effectiveFallbackPlaces,
     ...gameStorePlaces,
-    ...gameCenterPlaces,
     ...hobbyPlaces
   ]);
   let feedback = '';
