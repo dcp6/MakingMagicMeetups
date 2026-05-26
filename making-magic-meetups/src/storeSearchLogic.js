@@ -115,9 +115,9 @@ function mapPlaceToStore(place) {
     phone,
     latitude: Number.isFinite(latitude) ? latitude : null,
     longitude: Number.isFinite(longitude) ? longitude : null,
-    // All results in the list are Apple-tagged gaming stores; flag always true
-    // but kept so the UI "Set as My Store" button logic remains explicit.
-    isActualStore: true,
+    // True when Apple's subtitle/category tags this as a gaming/hobby store.
+    // Used to gate the "Set as My Store" button — cities won't have this tag.
+    isActualStore: isTaggedAsGamingStore(place),
     _relevanceScore: relevanceScore
   };
 }
@@ -142,18 +142,16 @@ export function rankStores(places, limit = 10) {
     dedupedPlaces.push(place);
   }
 
-  // Debug: log what Apple returned so we can tune the filter.
+  // Log what Apple returned so we can see subtitle/category values in the console.
   if (typeof console !== 'undefined') {
     dedupedPlaces.forEach((p) => {
-      const tagged = isTaggedAsGamingStore(p);
       console.log(
-        `[store] ${tagged ? '✅' : '❌'} "${p?.name}" | subtitle: "${p?.subtitle}" | category: "${p?.pointOfInterestCategory ?? p?.poiCategory ?? p?.category}"`
+        `[store] "${p?.name}" | subtitle: "${p?.subtitle}" | category: "${p?.pointOfInterestCategory ?? p?.poiCategory ?? p?.category}"`
       );
     });
   }
 
   return dedupedPlaces
-    .filter(isTaggedAsGamingStore)                  // Only Apple-tagged gaming stores
     .map(mapPlaceToStore)
     .sort((a, b) => b._relevanceScore - a._relevanceScore)
     .slice(0, limit)
