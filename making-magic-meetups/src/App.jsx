@@ -142,6 +142,17 @@ export default function App() {
   const [loginServiceStatus, setLoginServiceStatus] = useState('unknown');
   const [loginServiceLastCheckedAt, setLoginServiceLastCheckedAt] = useState(null);
   const [loginServiceLastStatusCode, setLoginServiceLastStatusCode] = useState(null);
+  // Messages
+  const [messages, setMessages] = useState([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messagesFeedback, setMessagesFeedback] = useState('');
+  const [composeRecipient, setComposeRecipient] = useState('');
+  const [composeBody, setComposeBody] = useState('');
+  const [replyBody, setReplyBody] = useState('');
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [activeConversationUsername, setActiveConversationUsername] = useState(null);
+  const [userSearchResults, setUserSearchResults] = useState([]);
+  const [userSearchLoading, setUserSearchLoading] = useState(false);
 
   useEffect(() => {
     function syncRouteFromHash() {
@@ -164,6 +175,10 @@ export default function App() {
       }
       if (normalizedPath === '/my-cards') {
         setRoute('my-cards');
+        return;
+      }
+      if (normalizedPath === '/messages') {
+        setRoute('messages');
         return;
       }
       if (normalizedPath === '/forgot-password') {
@@ -329,6 +344,17 @@ export default function App() {
       return;
     }
     loadUserCardsFromApi(loginAuthHeader);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route, loggedInUser, loginAuthHeader, apiBaseUrl]);
+
+  useEffect(() => {
+    if (route !== 'messages') {
+      return;
+    }
+    if (!loggedInUser || loggedInUser.role !== 'user' || !loginAuthHeader) {
+      return;
+    }
+    loadMessagesFromApi(loginAuthHeader);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route, loggedInUser, loginAuthHeader, apiBaseUrl]);
 
@@ -1477,6 +1503,163 @@ export default function App() {
     setIsCardPriceLoading(false);
   }
 
+  // ── Messaging helpers ────────────────────────────────────────────────────
+
+  function buildThreads(msgList, myId) {
+    const threadMap = new Map();
+    for (const msg of msgList) {
+      const isFromMe = Number(msg.senderId) === Number(myId);
+      const otherUsername = isFromMe ? msg.recipientUsername : msg.senderUsername;
+      const otherFullName = isFromMe ? msg.recipientFullName : msg.senderFullName;
+      if (!threadMap.has(otherUsername)) {
+        threadMap.set(otherUsername, {
+          otherUsername,
+          otherFullName,
+          messages: [],
+          unreadCount: 0
+        });
+      }
+      const thread = threadMap.get(otherUsername);
+      thread.messages.push(msg);
+      if (!isFromMe && !msg.readAt) {
+        thread.unreadCount += 1;
+      }
+    }
+    const threads = Array.from(threadMap.values());
+    threads.sort((a, b) => {
+      const aTime = a.messages[a.messages.length - 1]?.createdAt || '';
+      const bTime = b.messages[b.messages.length - 1]?.createdAt || '';
+      return bTime > aTime ? 1 : bTime < aTime ? -1 : 0;
+    });
+    return threads;
+  }
+
+  function formatMessageDate(dateStr) {
+    if (!dateStr) return '';
+    try {
+      return new Date(dateStr).toLocaleString(undefined, {
+        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+      });
+    } catch (_e) {
+      return String(dateStr);
+    }
+  }
+
+  async function loadMessagesFromApi(authHeader = loginAuthHeader) {
+    if (!authHeader) return;
+    setMessagesLoading(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/messages`, {
+        headers: { Authorization: authHeader }
+      });
+      if (!response.ok) {
+        setMessages([]);
+        return;
+      }
+      const payload = await response.json();
+      setMessages(Array.isArray(payload.messages) ? payload.messages : []);
+    } catch (_err) {
+      setMessages([]);
+    } finally {
+      setMessagesLoading(false);
+    }
+  }
+
+  async function handleSendMessage(recipientOverride) {
+    const to = (recipientOverride || composeRecipient).trim();
+    const body = (recipientOverride ? replyBody : composeBody).trim();
+    if (!to || !body) {
+      setMessagesFeedback('Please fill in both recipient and message.');
+      return;
+    }
+    setIsSendingMessage(true);
+    setMessagesFeedback('');
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: loginAuthHeader
+        },
+        body: JSON.stringify({ to, body })
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setMessagesFeedback(payload.error || 'Failed to send message.');
+        return;
+      }
+      if (recipientOverride) {
+        setReplyBody('');
+        setActiveConversationUsername(to);
+      } else {
+        setComposeBody('');
+        setComposeRecipient('');
+        setUserSearchResults([]);
+        setActiveConversationUsername(to);
+      }
+      await loadMessagesFromApi(loginAuthHeader);
+    } catch (_err) {
+      setMessagesFeedback('Could not send message. Please try again.');
+    } finally {
+      setIsSendingMessage(false);
+    }
+  }
+
+  async function handleDeleteMessage(messageId) {
+    try {
+      await fetch(`${apiBaseUrl}/api/messages/${messageId}`, {
+        method: 'DELETE',
+        headers: { Authorization: loginAuthHeader }
+      });
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    } catch (_err) {
+      // ignore
+    }
+  }
+
+  async function handleMarkThreadRead(thread) {
+    const unread = thread.messages.filter((m) => !m.fromMe && !m.readAt);
+    if (unread.length === 0) return;
+    await Promise.all(
+      unread.map((m) =>
+        fetch(`${apiBaseUrl}/api/messages/${m.id}/read`, {
+          method: 'PATCH',
+          headers: { Authorization: loginAuthHeader }
+        }).catch(() => null)
+      )
+    );
+    setMessages((prev) =>
+      prev.map((m) =>
+        unread.some((u) => u.id === m.id) ? { ...m, readAt: new Date().toISOString() } : m
+      )
+    );
+  }
+
+  async function handleUserSearch(query) {
+    const q = query.trim();
+    if (q.length < 2) {
+      setUserSearchResults([]);
+      return;
+    }
+    setUserSearchLoading(true);
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/api/users/search?q=${encodeURIComponent(q)}`,
+        { headers: { Authorization: loginAuthHeader } }
+      );
+      if (response.ok) {
+        const payload = await response.json();
+        setUserSearchResults(Array.isArray(payload.users) ? payload.users : []);
+      }
+    } catch (_err) {
+      // ignore
+    } finally {
+      setUserSearchLoading(false);
+    }
+  }
+
+  // ── End messaging helpers ────────────────────────────────────────────────
+
   async function handleCardListUpload(event) {
     event.preventDefault();
     // Every upload action starts fresh so stale "Just Saved" rows do not linger.
@@ -1926,6 +2109,14 @@ export default function App() {
       <a className="topbar-link" href="#/my-cards">
         My Cards
       </a>
+      {loggedInUser ? (
+        <a className="topbar-link" href="#/messages">
+          {(() => {
+            const unread = messages.filter((m) => !m.fromMe && !m.readAt).length;
+            return unread > 0 ? `Messages (${unread})` : 'Messages';
+          })()}
+        </a>
+      ) : null}
     </div>
   );
 
@@ -2768,6 +2959,197 @@ export default function App() {
                   <p>No saved cards yet.</p>
                 )}
               </>
+            )}
+          </section>
+        </main>
+        {loginServiceIndicator}
+      </div>
+    );
+  }
+
+  if (route === 'messages') {
+    const myId = loggedInUser?.id;
+    const threads = myId ? buildThreads(messages, myId) : [];
+    const activeThread = threads.find((t) => t.otherUsername === activeConversationUsername) || null;
+    const inboxCount = messages.filter((m) => !m.fromMe).length;
+    const inboxLimit = 25;
+
+    return (
+      <div className="page">
+        <header className="topbar">
+          {headerBrand}
+          {headerLogin}
+        </header>
+        <main>
+          <section className="messages-section">
+            <h1>Messages</h1>
+            {!loggedInUser ? (
+              <p>Please <a href="#/dashboard">log in</a> to use messages.</p>
+            ) : (
+              <div className="messages-layout">
+                {/* Sidebar: compose + thread list */}
+                <aside className="messages-sidebar">
+                  <div className="compose-panel">
+                    <h2 className="panel-heading">New Message</h2>
+                    <div className="compose-recipient-wrap">
+                      <input
+                        className="compose-input"
+                        type="text"
+                        placeholder="Username or email"
+                        value={composeRecipient}
+                        onChange={(e) => {
+                          setComposeRecipient(e.target.value);
+                          handleUserSearch(e.target.value);
+                        }}
+                        autoComplete="off"
+                      />
+                      {userSearchResults.length > 0 && (
+                        <ul className="user-search-dropdown">
+                          {userSearchResults.map((u) => (
+                            <li key={u.username}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setComposeRecipient(u.username);
+                                  setUserSearchResults([]);
+                                }}
+                              >
+                                <strong>{u.username}</strong>
+                                {u.fullName ? ` — ${u.fullName}` : ''}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <textarea
+                      className="compose-textarea"
+                      placeholder="Write your message…"
+                      value={composeBody}
+                      maxLength={1000}
+                      onChange={(e) => setComposeBody(e.target.value)}
+                    />
+                    <div className="compose-actions">
+                      <button
+                        type="button"
+                        className="action-button primary"
+                        onClick={() => handleSendMessage(null)}
+                        disabled={isSendingMessage || !composeRecipient.trim() || !composeBody.trim()}
+                      >
+                        {isSendingMessage ? 'Sending…' : 'Send'}
+                      </button>
+                      <span className="char-count">{composeBody.length}/1000</span>
+                    </div>
+                    {messagesFeedback ? (
+                      <p className="messages-feedback">{messagesFeedback}</p>
+                    ) : null}
+                  </div>
+
+                  <div className="inbox-status">
+                    <span>Inbox: {inboxCount}/{inboxLimit}</span>
+                  </div>
+
+                  <div className="thread-list">
+                    <h2 className="panel-heading">Conversations</h2>
+                    {messagesLoading && <p className="subtle">Loading…</p>}
+                    {!messagesLoading && threads.length === 0 && (
+                      <p className="subtle">No conversations yet.</p>
+                    )}
+                    {threads.map((thread) => {
+                      const lastMsg = thread.messages[thread.messages.length - 1];
+                      const isActive = activeConversationUsername === thread.otherUsername;
+                      return (
+                        <button
+                          key={thread.otherUsername}
+                          type="button"
+                          className={`thread-item${isActive ? ' thread-item--active' : ''}`}
+                          onClick={() => {
+                            setActiveConversationUsername(thread.otherUsername);
+                            setReplyBody('');
+                            setMessagesFeedback('');
+                            handleMarkThreadRead(thread);
+                          }}
+                        >
+                          <div className="thread-item-top">
+                            <span className="thread-name">
+                              {thread.otherFullName || thread.otherUsername}
+                            </span>
+                            {thread.unreadCount > 0 && (
+                              <span className="unread-badge">{thread.unreadCount}</span>
+                            )}
+                          </div>
+                          <div className="thread-preview">
+                            {lastMsg
+                              ? `${lastMsg.fromMe ? 'You: ' : ''}${lastMsg.body.slice(0, 60)}${lastMsg.body.length > 60 ? '…' : ''}`
+                              : ''}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </aside>
+
+                {/* Thread pane */}
+                <div className="messages-thread-pane">
+                  {activeThread ? (
+                    <>
+                      <div className="thread-header">
+                        <strong>{activeThread.otherFullName || activeThread.otherUsername}</strong>
+                        <span className="thread-username">@{activeThread.otherUsername}</span>
+                      </div>
+                      <div className="thread-messages">
+                        {activeThread.messages.map((msg) => (
+                          <div
+                            key={msg.id}
+                            className={`message-bubble${msg.fromMe ? ' message-bubble--me' : ' message-bubble--them'}`}
+                          >
+                            <div className="message-body">{msg.body}</div>
+                            <div className="message-meta">
+                              {formatMessageDate(msg.createdAt)}
+                              {!msg.fromMe && msg.readAt ? ' · Read' : ''}
+                            </div>
+                            <button
+                              type="button"
+                              className="message-delete-btn"
+                              title="Delete message"
+                              onClick={() => handleDeleteMessage(msg.id)}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="thread-reply-area">
+                        <textarea
+                          className="compose-textarea"
+                          placeholder={`Reply to @${activeThread.otherUsername}…`}
+                          value={replyBody}
+                          maxLength={1000}
+                          onChange={(e) => setReplyBody(e.target.value)}
+                        />
+                        <div className="compose-actions">
+                          <button
+                            type="button"
+                            className="action-button primary"
+                            onClick={() => handleSendMessage(activeThread.otherUsername)}
+                            disabled={isSendingMessage || !replyBody.trim()}
+                          >
+                            {isSendingMessage ? 'Sending…' : 'Reply'}
+                          </button>
+                          <span className="char-count">{replyBody.length}/1000</span>
+                        </div>
+                        {messagesFeedback ? (
+                          <p className="messages-feedback">{messagesFeedback}</p>
+                        ) : null}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="thread-empty">
+                      <p>Select a conversation or send a new message.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </section>
         </main>

@@ -98,3 +98,15 @@ CREATE TABLE IF NOT EXISTS account_card_items (
 );
 
 CREATE INDEX IF NOT EXISTS account_card_items_account_id_idx ON account_card_items (account_id);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id BIGSERIAL PRIMARY KEY,
+  sender_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  recipient_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  read_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS messages_recipient_idx ON messages (recipient_id);
+CREATE INDEX IF NOT EXISTS messages_sender_idx ON messages (sender_id);

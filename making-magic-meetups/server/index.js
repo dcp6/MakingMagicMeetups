@@ -522,6 +522,67 @@ db.exec(`
     updated_at = CURRENT_TIMESTAMP
 `);
 
+// Messages table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_id INTEGER NOT NULL,
+    recipient_id INTEGER NOT NULL,
+    body TEXT NOT NULL,
+    read_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sender_id) REFERENCES accounts(id) ON DELETE CASCADE,
+    FOREIGN KEY (recipient_id) REFERENCES accounts(id) ON DELETE CASCADE
+  );
+`);
+
+db.exec(`CREATE INDEX IF NOT EXISTS messages_recipient_idx ON messages (recipient_id)`);
+db.exec(`CREATE INDEX IF NOT EXISTS messages_sender_idx ON messages (sender_id)`);
+
+const MESSAGE_INBOX_LIMIT = 25;
+
+const insertMessage = db.prepare(`
+  INSERT INTO messages (sender_id, recipient_id, body) VALUES (?, ?, ?)
+`);
+
+const countInboxMessages = db.prepare(`
+  SELECT COUNT(*) AS count FROM messages WHERE recipient_id = ?
+`);
+
+const listMessagesForUser = db.prepare(`
+  SELECT
+    m.id, m.sender_id, m.recipient_id, m.body, m.read_at, m.created_at,
+    s.username AS sender_username, s.full_name AS sender_full_name,
+    r.username AS recipient_username, r.full_name AS recipient_full_name
+  FROM messages m
+  JOIN accounts s ON s.id = m.sender_id
+  JOIN accounts r ON r.id = m.recipient_id
+  WHERE m.sender_id = ? OR m.recipient_id = ?
+  ORDER BY m.created_at ASC
+`);
+
+const markMessageRead = db.prepare(`
+  UPDATE messages SET read_at = CURRENT_TIMESTAMP
+  WHERE id = ? AND recipient_id = ? AND read_at IS NULL
+`);
+
+const deleteMessage = db.prepare(`
+  DELETE FROM messages WHERE id = ? AND (sender_id = ? OR recipient_id = ?)
+`);
+
+const findAccountForMessaging = db.prepare(`
+  SELECT id, username, full_name FROM accounts
+  WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)
+  LIMIT 1
+`);
+
+const searchAccounts = db.prepare(`
+  SELECT id, username, full_name FROM accounts
+  WHERE LOWER(username) LIKE LOWER(?) AND id != ?
+  ORDER BY username ASC
+  LIMIT 10
+`);
+
 const clearAccountCards = db.prepare(`
   DELETE FROM account_card_items
   WHERE account_id = ?
@@ -1293,6 +1354,20 @@ async function validatePostgresRuntimeOrExit() {
 
     // Incremental column migrations — safe to run repeatedly (IF NOT EXISTS).
     await pgQuery(`ALTER TABLE my_cards ADD COLUMN IF NOT EXISTS offer_price_cents INTEGER`);
+
+    // Messages table (created if not present; harmless on existing schemas).
+    await pgQuery(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id BIGSERIAL PRIMARY KEY,
+        sender_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        recipient_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,
+        read_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pgQuery(`CREATE INDEX IF NOT EXISTS messages_recipient_idx ON messages (recipient_id)`);
+    await pgQuery(`CREATE INDEX IF NOT EXISTS messages_sender_idx ON messages (sender_id)`);
   } catch (error) {
     console.error(`Startup failed: could not connect to Postgres (${error.message || error}).`);
     process.exit(1);
@@ -1574,6 +1649,97 @@ async function saveCardsRuntime(accountId, entries, saveMode) {
     );
   });
 }
+
+// ── Messages runtime ────────────────────────────────────────────────────────
+
+async function countInboxMessagesRuntime(accountId) {
+  if (!usePostgresRuntime) {
+    return Number(countInboxMessages.get(accountId)?.count ?? 0);
+  }
+  const { rows } = await pgQuery(
+    `SELECT COUNT(*)::int AS count FROM messages WHERE recipient_id = $1`,
+    [accountId]
+  );
+  return Number(rows[0]?.count ?? 0);
+}
+
+async function insertMessageRuntime(senderId, recipientId, body) {
+  if (!usePostgresRuntime) {
+    return insertMessage.run(senderId, recipientId, body);
+  }
+  return pgQuery(
+    `INSERT INTO messages (sender_id, recipient_id, body) VALUES ($1, $2, $3)`,
+    [senderId, recipientId, body]
+  );
+}
+
+async function listMessagesForUserRuntime(accountId) {
+  if (!usePostgresRuntime) {
+    return listMessagesForUser.all(accountId, accountId);
+  }
+  const { rows } = await pgQuery(
+    `
+      SELECT
+        m.id, m.sender_id, m.recipient_id, m.body, m.read_at, m.created_at,
+        s.username AS sender_username, s.full_name AS sender_full_name,
+        r.username AS recipient_username, r.full_name AS recipient_full_name
+      FROM messages m
+      JOIN accounts s ON s.id = m.sender_id
+      JOIN accounts r ON r.id = m.recipient_id
+      WHERE m.sender_id = $1 OR m.recipient_id = $1
+      ORDER BY m.created_at ASC
+    `,
+    [accountId]
+  );
+  return rows;
+}
+
+async function markMessageReadRuntime(messageId, accountId) {
+  if (!usePostgresRuntime) {
+    return markMessageRead.run(messageId, accountId);
+  }
+  return pgQuery(
+    `UPDATE messages SET read_at = NOW() WHERE id = $1 AND recipient_id = $2 AND read_at IS NULL`,
+    [messageId, accountId]
+  );
+}
+
+async function deleteMessageRuntime(messageId, accountId) {
+  if (!usePostgresRuntime) {
+    return deleteMessage.run(messageId, accountId, accountId);
+  }
+  return pgQuery(
+    `DELETE FROM messages WHERE id = $1 AND (sender_id = $2 OR recipient_id = $2)`,
+    [messageId, accountId]
+  );
+}
+
+async function findAccountForMessagingRuntime(usernameOrEmail) {
+  if (!usePostgresRuntime) {
+    return findAccountForMessaging.get(usernameOrEmail, usernameOrEmail) || null;
+  }
+  const { rows } = await pgQuery(
+    `SELECT id, username, full_name FROM accounts
+     WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($2) LIMIT 1`,
+    [usernameOrEmail, usernameOrEmail]
+  );
+  return rows[0] || null;
+}
+
+async function searchAccountsRuntime(query, excludeId) {
+  if (!usePostgresRuntime) {
+    return searchAccounts.all(`%${query}%`, excludeId);
+  }
+  const { rows } = await pgQuery(
+    `SELECT id, username, full_name FROM accounts
+     WHERE LOWER(username) LIKE LOWER($1) AND id != $2
+     ORDER BY username ASC LIMIT 10`,
+    [`%${query}%`, excludeId]
+  );
+  return rows;
+}
+
+// ── End messages runtime ─────────────────────────────────────────────────────
 
 const loginAttemptStore = new Map();
 const passwordResetAttemptStore = new Map();
@@ -2651,6 +2817,121 @@ app.get('/api/admin/password-reset-events', async (req, res) => {
 
   return res.json({ events });
 });
+
+// ── Messages API ─────────────────────────────────────────────────────────────
+
+app.get('/api/messages', async (req, res) => {
+  const credentials = parseBasicAuth(req);
+  if (!credentials) return res.status(401).json({ error: 'Unauthorized.' });
+  const user = await authenticateLoginRuntime(credentials.identifier, credentials.password);
+  if (!user || user.role !== 'user') return res.status(401).json({ error: 'Unauthorized.' });
+
+  const rows = await listMessagesForUserRuntime(user.id);
+  const inboxCount = await countInboxMessagesRuntime(user.id);
+
+  const messages = rows.map((row) => ({
+    id: Number(row.id),
+    senderId: Number(row.sender_id),
+    senderUsername: row.sender_username,
+    senderFullName: row.sender_full_name,
+    recipientId: Number(row.recipient_id),
+    recipientUsername: row.recipient_username,
+    recipientFullName: row.recipient_full_name,
+    body: row.body,
+    createdAt: row.created_at,
+    readAt: row.read_at || null,
+    fromMe: Number(row.sender_id) === Number(user.id)
+  }));
+
+  return res.json({ messages, inboxCount, inboxLimit: MESSAGE_INBOX_LIMIT });
+});
+
+app.post('/api/messages', async (req, res) => {
+  const credentials = parseBasicAuth(req);
+  if (!credentials) return res.status(401).json({ error: 'Unauthorized.' });
+  const user = await authenticateLoginRuntime(credentials.identifier, credentials.password);
+  if (!user || user.role !== 'user') return res.status(401).json({ error: 'Unauthorized.' });
+
+  const recipientIdentifier = String(req.body?.to || '').trim();
+  const body = String(req.body?.body || '').trim();
+
+  if (!recipientIdentifier) {
+    return res.status(400).json({ error: 'Please specify a recipient (username or email).' });
+  }
+  if (!body) {
+    return res.status(400).json({ error: 'Message cannot be empty.' });
+  }
+  if (body.length > 1000) {
+    return res.status(400).json({ error: 'Message is too long (max 1000 characters).' });
+  }
+
+  const recipient = await findAccountForMessagingRuntime(recipientIdentifier);
+  if (!recipient) {
+    return res.status(404).json({ error: 'No user found with that username or email.' });
+  }
+  if (Number(recipient.id) === Number(user.id)) {
+    return res.status(400).json({ error: 'You cannot message yourself.' });
+  }
+
+  const inboxCount = await countInboxMessagesRuntime(Number(recipient.id));
+  if (inboxCount >= MESSAGE_INBOX_LIMIT) {
+    return res.status(400).json({
+      error: `That user's inbox is full (${MESSAGE_INBOX_LIMIT} message limit). They need to delete some messages first.`
+    });
+  }
+
+  await insertMessageRuntime(Number(user.id), Number(recipient.id), body);
+  return res.json({ ok: true });
+});
+
+app.patch('/api/messages/:id/read', async (req, res) => {
+  const credentials = parseBasicAuth(req);
+  if (!credentials) return res.status(401).json({ error: 'Unauthorized.' });
+  const user = await authenticateLoginRuntime(credentials.identifier, credentials.password);
+  if (!user || user.role !== 'user') return res.status(401).json({ error: 'Unauthorized.' });
+
+  const messageId = Number(req.params.id);
+  if (!Number.isFinite(messageId)) {
+    return res.status(400).json({ error: 'Invalid message ID.' });
+  }
+
+  await markMessageReadRuntime(messageId, Number(user.id));
+  return res.json({ ok: true });
+});
+
+app.delete('/api/messages/:id', async (req, res) => {
+  const credentials = parseBasicAuth(req);
+  if (!credentials) return res.status(401).json({ error: 'Unauthorized.' });
+  const user = await authenticateLoginRuntime(credentials.identifier, credentials.password);
+  if (!user || user.role !== 'user') return res.status(401).json({ error: 'Unauthorized.' });
+
+  const messageId = Number(req.params.id);
+  if (!Number.isFinite(messageId)) {
+    return res.status(400).json({ error: 'Invalid message ID.' });
+  }
+
+  await deleteMessageRuntime(messageId, Number(user.id));
+  return res.json({ ok: true });
+});
+
+app.get('/api/users/search', async (req, res) => {
+  const credentials = parseBasicAuth(req);
+  if (!credentials) return res.status(401).json({ error: 'Unauthorized.' });
+  const user = await authenticateLoginRuntime(credentials.identifier, credentials.password);
+  if (!user || user.role !== 'user') return res.status(401).json({ error: 'Unauthorized.' });
+
+  const q = String(req.query.q || '').trim();
+  if (!q || q.length < 2) {
+    return res.json({ users: [] });
+  }
+
+  const accounts = await searchAccountsRuntime(q, Number(user.id));
+  return res.json({
+    users: accounts.map((a) => ({ username: a.username, fullName: a.full_name }))
+  });
+});
+
+// ── End Messages API ──────────────────────────────────────────────────────────
 
 await validatePostgresRuntimeOrExit();
 
