@@ -1087,11 +1087,27 @@ export default function App() {
     const cardName = entry.cardName;
     const endpoints = [];
 
+    // Most-specific first: Scryfall ID
     if (entry.scryfallId) {
       endpoints.push(`https://api.scryfall.com/cards/${encodeURIComponent(entry.scryfallId)}`);
     }
 
+    // Set + collector number → exact printing (e.g. /cards/m10/15)
+    if (entry.setCode && entry.collectorNumber) {
+      endpoints.push(
+        `https://api.scryfall.com/cards/${encodeURIComponent(entry.setCode.toLowerCase())}/${encodeURIComponent(entry.collectorNumber)}`
+      );
+    }
+
+    // Name within a set
     const encoded = encodeURIComponent(cardName);
+    if (entry.setCode) {
+      endpoints.push(
+        `https://api.scryfall.com/cards/named?exact=${encoded}&set=${encodeURIComponent(entry.setCode.toLowerCase())}`
+      );
+    }
+
+    // Fallback: name-only lookups
     endpoints.push(`https://api.scryfall.com/cards/named?exact=${encoded}`);
     endpoints.push(`https://api.scryfall.com/cards/named?fuzzy=${encoded}`);
 
@@ -1185,14 +1201,16 @@ export default function App() {
       let quantity = 1;
       let name = line;
 
-      // Patterns supported:
-      // - "2 Lightning Bolt"
-      // - "2x Lightning Bolt"
+      // Strip foil / condition markers: *F*, *E*, *M*, etc.
+      name = name.replace(/\*[A-Za-z]+\*/g, '').trim();
+
+      // Quantity patterns:
+      // - "2 Lightning Bolt" / "2x Lightning Bolt"
       // - "Lightning Bolt x2"
-      // - "Lightning Bolt (2)"
-      const leading = line.match(/^(\d+)\s*x?\s+(.+)$/i);
-      const trailingX = line.match(/^(.+?)\s*x\s*(\d+)$/i);
-      const trailingParen = line.match(/^(.+?)\s*\(\s*(\d+)\s*\)\s*$/);
+      // - "Lightning Bolt (2)"  ← only when parens contain pure digits
+      const leading = name.match(/^(\d+)\s*x?\s+(.+)$/i);
+      const trailingX = name.match(/^(.+?)\s+x\s*(\d+)$/i);
+      const trailingParen = name.match(/^(.+?)\s*\(\s*(\d+)\s*\)\s*$/);
 
       if (leading) {
         quantity = Number(leading[1]);
@@ -1205,6 +1223,49 @@ export default function App() {
         quantity = Number(trailingParen[2]);
       }
 
+      // ── Version extraction ────────────────────────────────────────────
+      // Supported formats (after quantity stripping):
+      //   Lightning Bolt [M10]           bracket set code
+      //   Lightning Bolt [M10] #15       bracket + hash collector number
+      //   Lightning Bolt [M10] 15        bracket + bare collector number
+      //   Lightning Bolt (M10) 15        MTGO/Moxfield export format
+      //   Lightning Bolt (M10) #15       paren + hash collector number
+      //   Lightning Bolt (M10)           paren set code only
+      let setCode = null;
+      let collectorNumber = null;
+
+      // Bracket notation: [SET]
+      const bracketMatch = name.match(/^(.*?)\s*\[([A-Za-z0-9]{2,6})\]\s*(.*)$/);
+      if (bracketMatch) {
+        setCode = bracketMatch[2].toUpperCase();
+        name = (bracketMatch[1] + ' ' + bracketMatch[3]).trim();
+      }
+
+      // Paren notation — only when content starts with a letter (not a qty paren)
+      if (!setCode) {
+        const parenMatch = name.match(/^(.*?)\s*\(([A-Za-z][A-Za-z0-9]{1,5})\)\s*(.*)$/);
+        if (parenMatch) {
+          setCode = parenMatch[2].toUpperCase();
+          name = (parenMatch[1] + ' ' + parenMatch[3]).trim();
+        }
+      }
+
+      // Collector number: explicit #15 / #15a
+      const hashMatch = name.match(/^(.*?)\s*#(\d+[a-z]?)\s*(.*)$/i);
+      if (hashMatch) {
+        collectorNumber = hashMatch[2];
+        name = (hashMatch[1] + ' ' + hashMatch[3]).trim();
+      } else if (setCode) {
+        // MTGO format: trailing bare integer after set extraction = collector number
+        const trailingNum = name.match(/^(.*\S)\s+(\d+[a-z]?)$/i);
+        if (trailingNum) {
+          collectorNumber = trailingNum[2];
+          name = trailingNum[1].trim();
+        }
+      }
+      // ── End version extraction ─────────────────────────────────────────
+
+      name = name.trim();
       if (!name) {
         continue;
       }
@@ -1213,12 +1274,13 @@ export default function App() {
         quantity = 1;
       }
 
-      const key = name.toLowerCase();
+      // Dedup key includes version so same card in different sets stays separate
+      const key = `${name.toLowerCase()}|${(setCode || '').toLowerCase()}|${(collectorNumber || '').toLowerCase()}`;
       const existing = entryMap.get(key);
       if (existing) {
         existing.quantity += quantity;
       } else {
-        entryMap.set(key, { cardName: name, quantity });
+        entryMap.set(key, { cardName: name, quantity, setCode, collectorNumber });
       }
     }
 
