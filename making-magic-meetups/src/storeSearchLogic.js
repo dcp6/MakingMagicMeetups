@@ -1,5 +1,5 @@
 const tcgHintRegex =
-  /\b(mtg|magic|trading\s*card|trading\s*cards|tcg|card\s*shop|game\s*store|game\s*shop|gaming|collectibles?|hobby|tabletop|warhammer|pokemon)\b/i;
+  /\b(mtg|magic|trading\s*card|trading\s*cards|tcg|card\s*shop|game\s*store|game\s*shop|game\s*center|game\s*zone|gaming|collectibles?|hobby|tabletop|warhammer|pokemon)\b/i;
 
 export function buildTcgQuery(query, selectedStoreLocation) {
   const baseQuery = String(query || '').trim();
@@ -8,6 +8,14 @@ export function buildTcgQuery(query, selectedStoreLocation) {
     return `${baseQuery}${locationSuffix}`.trim();
   }
   return `${baseQuery}${locationSuffix} trading card game store`.trim();
+}
+
+// Returns true when a place has a street address containing digits.
+// Geographic entities (cities, counties, states) typically have no street number,
+// so this distinguishes real businesses from area-level results.
+function hasStreetAddress(place) {
+  const address = String(place?.formattedAddress || place?.address || '').trim();
+  return address.length > 0 && /\d/.test(address);
 }
 
 // Returns true if a place's coordinates fall within the Americas or Europe.
@@ -172,8 +180,15 @@ export function rankStores(places, limit = 10) {
   );
 
   return dedupedPlaces
-    .filter(isTaggedAsGamingStore)                  // Exclude cities/areas
-    .filter(isInAmericaOrEurope)                    // Exclude results outside US/Europe
+    .filter((place) => {
+      // Direct results (from the user's raw query) pass if they look like a real
+      // business — either gaming-tagged OR has a real street address.
+      // This catches stores found by address/name that MapKit doesn't tag as gaming.
+      // Gaming-search results still require the stricter gaming-store check.
+      const passesGaming = isTaggedAsGamingStore(place);
+      const passesDirect = place._directResult && hasStreetAddress(place);
+      return (passesGaming || passesDirect) && isInAmericaOrEurope(place);
+    })
     .map(mapPlaceToStore)
     .sort((a, b) => b._relevanceScore - a._relevanceScore)
     .slice(0, limit)
@@ -197,9 +212,11 @@ export async function runStoreSearch({ query, selectedStoreLocation, searchPlace
     }
   }
 
-  // Seed search (no anchor) — used only to derive location options and a
-  // geographic anchor coordinate for all subsequent queries.
-  const locationSeedPlaces = await safeSearchPlaces(trimmedQuery);
+  // Seed search (no anchor) — used to derive location options, a geographic
+  // anchor coordinate, AND as direct results when the user searched by
+  // address or store name. Marked so rankStores applies the relaxed filter.
+  const locationSeedPlacesRaw = await safeSearchPlaces(trimmedQuery);
+  const locationSeedPlaces = locationSeedPlacesRaw.map((p) => ({ ...p, _directResult: true }));
 
   // Extract a coordinate from the first seed result so downstream searches
   // are anchored to the searched city, not the user's device location.
@@ -260,6 +277,7 @@ export async function runStoreSearch({ query, selectedStoreLocation, searchPlace
 
   const stores = rankStores(
     [
+      ...locationSeedPlaces,       // Direct query results — relaxed filter inside rankStores
       ...effectivePrimaryPlaces,
       ...effectiveFallbackPlaces,
       ...gameStorePlaces,
