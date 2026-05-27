@@ -2456,15 +2456,18 @@ export default function App() {
                             <p className="store-result-name">{store.name}</p>
                             {store.address ? <p className="store-result-address">{store.address}</p> : null}
                           </div>
-                          {store.isActualStore ? (
                           <button
                             type="button"
+                            className={preferredStore?.placeId && preferredStore.placeId === store.placeId ? 'action-button secondary' : ''}
                             onClick={() => savePreferredStore(store)}
-                            disabled={isPreferredStoreSaving || !store.placeId}
+                            disabled={isPreferredStoreSaving}
                           >
-                            {isPreferredStoreSaving ? 'Saving...' : 'Set Preferred'}
+                            {isPreferredStoreSaving
+                              ? 'Saving...'
+                              : preferredStore?.placeId && preferredStore.placeId === store.placeId
+                                ? '✓ Saved'
+                                : 'Save'}
                           </button>
-                          ) : null}
                         </div>
                       ))}
                     </div>
@@ -2657,13 +2660,18 @@ export default function App() {
                               <a href={store.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Maps Listing</a>
                             ) : null}
                           </div>
-                          {loggedInUser?.role === 'user' && store.isActualStore ? (
+                          {loggedInUser?.role === 'user' ? (
                             <button
                               type="button"
+                              className={preferredStore?.placeId && preferredStore.placeId === store.placeId ? 'action-button secondary' : ''}
                               onClick={(e) => { e.stopPropagation(); savePreferredStore(store); }}
-                              disabled={isPreferredStoreSaving || !store.placeId}
+                              disabled={isPreferredStoreSaving}
                             >
-                              {isPreferredStoreSaving ? 'Saving...' : 'Set as My Store'}
+                              {isPreferredStoreSaving
+                                ? 'Saving...'
+                                : preferredStore?.placeId && preferredStore.placeId === store.placeId
+                                  ? '✓ My Store'
+                                  : 'Save as My Store'}
                             </button>
                           ) : null}
                         </div>
