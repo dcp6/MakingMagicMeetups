@@ -754,6 +754,15 @@ h1 {
   letter-spacing: 0.05em;
 }
 
+.card-name-cell {
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .dashboard-actions {
   margin: 0.4rem 0 0.2rem;
   display: flex;
@@ -1106,30 +1115,15 @@ h1 {
     max-width: 1.05rem;
   }
 
-  /* Hard hide non-mobile columns for My Cards tables */
-  .my-cards-saved-table th:nth-child(2),
-  .my-cards-saved-table td:nth-child(2),
-  .my-cards-saved-table th:nth-child(3),
-  .my-cards-saved-table td:nth-child(3),
-  .my-cards-saved-table th:nth-child(6),
-  .my-cards-saved-table td:nth-child(6),
-  .my-cards-saved-table th:nth-child(8),
-  .my-cards-saved-table td:nth-child(8) {
-    display: none !important;
-  }
-
-  .my-cards-requesting-table th:nth-child(2),
-  .my-cards-requesting-table td:nth-child(2),
-  .my-cards-requesting-table th:nth-child(3),
-  .my-cards-requesting-table td:nth-child(3),
-  .my-cards-requesting-table th:nth-child(5),
-  .my-cards-requesting-table td:nth-child(5),
-  .my-cards-requesting-table th:nth-child(6),
-  .my-cards-requesting-table td:nth-child(6),
-  .my-cards-requesting-table th:nth-child(8),
-  .my-cards-requesting-table td:nth-child(8),
-  .my-cards-requesting-table th:nth-child(9),
-  .my-cards-requesting-table td:nth-child(9) {
+  /* Unified My Cards table: hide Card, price, and Actions columns on mobile */
+  .my-cards-unified-table th:nth-child(2),
+  .my-cards-unified-table td:nth-child(2),
+  .my-cards-unified-table th:nth-child(5),
+  .my-cards-unified-table td:nth-child(5),
+  .my-cards-unified-table th:nth-child(6),
+  .my-cards-unified-table td:nth-child(6),
+  .my-cards-unified-table th:nth-child(8),
+  .my-cards-unified-table td:nth-child(8) {
     display: none !important;
   }
 }

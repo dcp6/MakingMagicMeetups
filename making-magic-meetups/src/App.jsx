@@ -2545,7 +2545,7 @@ export default function App() {
                     </table>
                   </div>
                 ) : null}
-                <p>Your saved card database (permanent storage). Edit inline and save.</p>
+                <p>Your saved card database. Edit inline and click Save.</p>
                 <div className="dashboard-actions">
                   <button
                     type="button"
@@ -2579,18 +2579,11 @@ export default function App() {
                 </div>
                 {uploadedCards.length > 0 ? (
                   <div className="card-upload-results">
-                    <h2>Saved Cards</h2>
-                    <p className="table-total">Table Total: ${savedTotal.toFixed(2)}</p>
+                    <h2>My Cards</h2>
                     <p className="notice subtle">
-                      Saved: {savedQtyTotal} total {savedQtyTotal === 1 ? 'card' : 'cards'} ·
-                      Owned: {haveQtyTotal} total {haveQtyTotal === 1 ? 'card' : 'cards'} ·
-                      Wants: {requestingQtyTotal} total {requestingQtyTotal === 1 ? 'card' : 'cards'} ·
-                      Giving: {offeringQtyTotal} total {offeringQtyTotal === 1 ? 'card' : 'cards'}
+                      {savedQtyTotal} {savedQtyTotal === 1 ? 'card' : 'cards'} total ·
+                      Owned: {haveQtyTotal} · Wants: {requestingQtyTotal} · Giving: {offeringQtyTotal}
                     </p>
-                    {savedPairs.length === 0 ? (
-                      <p className="notice subtle">No cards in your Saved list right now.</p>
-                    ) : (
-                    <>
                     {renderMobileImageOnlyCards(
                       savedPairs,
                       savedMobileSelectedCardKey,
@@ -2598,413 +2591,38 @@ export default function App() {
                       'TCGPlayer Low',
                       (card) => card.tcgLow || 'N/A'
                     )}
-                    <table className="price-table my-cards-saved-table desktop-table-only">
-                      <thead>
-                        <tr>
-                          <th>Pic</th>
-                          <th className="mobile-hide-saved">Card</th>
-                          <th className="mobile-hide-saved">Version</th>
-                          <th>Qty</th>
-                          <th>TCGPlayer Low</th>
-                          <th className="mobile-hide-saved">Line Total</th>
-                          <th>Status</th>
-                          <th className="mobile-hide-saved">Links / Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {savedPairs.map(
-                          ({ card, index }) => (
-                            <tr key={`${card.scryfallId || card.inputName || card.resolvedName}-${index}`}>
-                            <td>
-                              {card.imageSmall ? (
-                                <div className="thumb-wrap">
-                                  <img
-                                    className="card-thumb"
-                                    src={card.imageSmall}
-                                    alt={card.resolvedName}
-                                    loading="lazy"
-                                  />
-                                  {card.imageNormal || card.imageSmall ? (
-                                    <img
-                                      className="card-thumb-preview front"
-                                      src={card.imageNormal || card.imageSmall}
-                                      alt=""
-                                      loading="lazy"
-                                    />
-                                  ) : null}
-                                  {card.imageNormalBack || card.imageSmallBack ? (
-                                    <img
-                                      className="card-thumb-preview back"
-                                      src={card.imageNormalBack || card.imageSmallBack}
-                                      alt=""
-                                      loading="lazy"
-                                    />
-                                  ) : null}
-                                </div>
-                              ) : null}
-                            </td>
-                            <td className="mobile-hide-saved">{card.resolvedName}</td>
-                            <td className="mobile-hide-saved">
-                              <button
-                                type="button"
-                                className="version-button"
-                                onClick={() =>
-                                  loadVersionOptionsFor(
-                                    card.scryfallId || card.resolvedName || card.inputName,
-                                    card.resolvedName || card.inputName
-                                  )
-                                }
-                              >
-                                {card.setCode && card.collectorNumber
-                                  ? `${card.setCode.toUpperCase()} #${card.collectorNumber}`
-                                  : 'Choose'}
-                              </button>
-                              {versionLoadingKey ===
-                              (card.scryfallId || card.resolvedName || card.inputName) ? (
-                                <div className="version-picker">Loading...</div>
-                              ) : null}
-                              {versionOptionsByKey[
-                                card.scryfallId || card.resolvedName || card.inputName
-                              ]?.length ? (
-                                <div className="version-picker">
-                                  <select
-                                    value={card.scryfallId || ''}
-                                    onChange={(event) =>
-                                      handleVersionChange(index, event.target.value)
-                                    }
-                                  >
-                                    {versionOptionsByKey[
-                                      card.scryfallId || card.resolvedName || card.inputName
-                                    ].map((option) => (
-                                      <option key={option.id} value={option.id}>
-                                        {option.set.toUpperCase()} #{option.collectorNumber} ·{' '}
-                                        {option.setName} · {option.releasedAt}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                              ) : null}
-                            </td>
-                            <td>
-                              <input
-                                className="qty-input"
-                                type="number"
-                                min={1}
-                                step={1}
-                                value={card.quantity}
-                                onChange={(event) => handleQuantityChange(index, event.target.value)}
-                              />
-                            </td>
-                            <td>{card.tcgLow}</td>
-                            <td className="mobile-hide-saved">
-                              {card.lineTotalUsd !== null
-                                ? `$${card.lineTotalUsd.toFixed(2)}`
-                                : 'N/A'}
-                            </td>
-                            <td className="requesting-cell">
-                              <select
-                                className="market-status-select"
-                                value={card.marketStatus || 'have'}
-                                onChange={(event) => handleMarketStatusChange(index, event.target.value)}
-                                aria-label={`Status ${card.resolvedName}`}
-                              >
-                                <option value="have">Owned</option>
-                                <option value="requesting">Wants</option>
-                                <option value="offering">Giving</option>
-                              </select>
-                            </td>
-                            <td className="mobile-hide-saved">
-                              <div className="row-actions">
-                                {card.tcgUrl ? (
-                                  <a href={card.tcgUrl} target="_blank" rel="noreferrer">
-                                    TCGPlayer
-                                  </a>
-                                ) : card.error ? (
-                                  <span>{card.error}</span>
-                                ) : (
-                                  <span>No link</span>
-                                )}
-                                <button
-                                  type="button"
-                                  className="row-button danger"
-                                  onClick={() => handleDeleteSavedCard(card)}
-                                  disabled={
-                                    isCardPriceLoading ||
-                                    isCardsSaving ||
-                                    deletingCardKey ===
-                                      String(
-                                        card.scryfallId ||
-                                          String(card.resolvedName || card.inputName || '').trim()
-                                      )
-                                  }
-                                >
-                                  {deletingCardKey ===
-                                  String(
-                                    card.scryfallId ||
-                                      String(card.resolvedName || card.inputName || '').trim()
-                                  )
-                                    ? 'Deleting...'
-                                    : 'Delete'}
-                                </button>
-                              </div>
-                            </td>
+                    {savedPairs.length === 0 ? (
+                      <p className="notice subtle">No saved cards yet.</p>
+                    ) : (
+                      <table className="price-table my-cards-unified-table desktop-table-only">
+                        <thead>
+                          <tr>
+                            <th>Pic</th>
+                            <th>Card</th>
+                            <th># Owned</th>
+                            <th># Wanted</th>
+                            <th>Ask Price</th>
+                            <th>Give Price</th>
+                            <th>Status</th>
+                            <th>Actions</th>
                           </tr>
-                          )
-                        )}
-                      </tbody>
-                    </table>
-                    </>
-                    )}
-
-                    <h2>Wants</h2>
-                    <p className="table-total">
-                      Table Total: ${requestingTotal.toFixed(2)} · Wants Total Value: $
-                      {requestingTotalValue.toFixed(2)} · Wants Total: {requestingQtyTotal}{' '}
-                      {requestingQtyTotal === 1 ? 'card' : 'cards'}
-                    </p>
-                    {requestingPairs.length === 0 ? (
-                      <p className="notice subtle">No cards are marked as Wants yet.</p>
-                    ) : (
-                      <>
-                      {renderMobileImageOnlyCards(
-                        requestingPairs,
-                        requestingMobileSelectedCardKey,
-                        setRequestingMobileSelectedCardKey,
-                        'Wants Amount',
-                        (card) => {
-                          const asking = formatCents(card.askingPriceCents);
-                          return asking ? `$${asking}` : 'N/A';
-                        }
-                      )}
-                      <table className="price-table my-cards-requesting-table desktop-table-only">
-                          <thead>
-                            <tr>
-                              <th>Pic</th>
-                              <th className="mobile-hide-requesting">Card</th>
-                              <th className="mobile-hide-requesting">Version</th>
-                              <th>Qty</th>
-                              <th>Ask Qty</th>
-                              <th className="mobile-hide-requesting">TCGPlayer Low</th>
-                              <th className="mobile-hide-requesting">Line Total</th>
-                              <th>Asking For</th>
-                              <th className="mobile-hide-requesting">Status</th>
-                              <th className="mobile-hide-requesting">Links / Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {requestingPairs.map(({ card, index }) => (
-                              <tr
-                                key={`${card.scryfallId || card.inputName || card.resolvedName}-requesting-${index}`}
-                              >
-                              <td>
-                                {card.imageSmall ? (
-                                  <div className="thumb-wrap">
-                                    <img
-                                      className="card-thumb"
-                                      src={card.imageSmall}
-                                      alt={card.resolvedName}
-                                      loading="lazy"
-                                    />
-                                    {card.imageNormal || card.imageSmall ? (
-                                      <img
-                                        className="card-thumb-preview front"
-                                        src={card.imageNormal || card.imageSmall}
-                                        alt=""
-                                        loading="lazy"
-                                      />
-                                    ) : null}
-                                    {card.imageNormalBack || card.imageSmallBack ? (
-                                      <img
-                                        className="card-thumb-preview back"
-                                        src={card.imageNormalBack || card.imageSmallBack}
-                                        alt=""
-                                        loading="lazy"
-                                      />
-                                    ) : null}
-                                  </div>
-                                ) : null}
-                              </td>
-                              <td className="mobile-hide-requesting">{card.resolvedName}</td>
-                              <td className="mobile-hide-requesting">
-                                <button
-                                  type="button"
-                                  className="version-button"
-                                  onClick={() =>
-                                    loadVersionOptionsFor(
-                                      card.scryfallId || card.resolvedName || card.inputName,
-                                      card.resolvedName || card.inputName
-                                    )
-                                  }
-                                >
-                                  {card.setCode && card.collectorNumber
-                                    ? `${card.setCode.toUpperCase()} #${card.collectorNumber}`
-                                    : 'Choose'}
-                                </button>
-                                {versionLoadingKey ===
-                                (card.scryfallId || card.resolvedName || card.inputName) ? (
-                                  <div className="version-picker">Loading...</div>
-                                ) : null}
-                                {versionOptionsByKey[
-                                  card.scryfallId || card.resolvedName || card.inputName
-                                ]?.length ? (
-                                  <div className="version-picker">
-                                    <select
-                                      value={card.scryfallId || ''}
-                                      onChange={(event) =>
-                                        handleVersionChange(index, event.target.value)
-                                      }
-                                    >
-                                      {versionOptionsByKey[
-                                        card.scryfallId || card.resolvedName || card.inputName
-                                      ].map((option) => (
-                                        <option key={option.id} value={option.id}>
-                                          {option.set.toUpperCase()} #{option.collectorNumber} ·{' '}
-                                          {option.setName} · {option.releasedAt}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                ) : null}
-                              </td>
-                              <td>
-                                <input
-                                  className="qty-input"
-                                  type="number"
-                                  min={0}
-                                  step={1}
-                                  value={card.quantity}
-                                  onChange={(event) =>
-                                    handleQuantityChange(index, event.target.value)
-                                  }
-                                />
-                              </td>
-                              <td>
-                                <input
-                                  className="qty-input"
-                                  type="number"
-                                  min={0}
-                                  step={1}
-                                  value={
-                                    card.askingQuantity === null || card.askingQuantity === undefined
-                                      ? Math.max(0, Number(card.quantity) || 0)
-                                      : card.askingQuantity
-                                  }
-                                  onChange={(event) =>
-                                    handleRequestingAskingQuantityChange(index, event.target.value)
-                                  }
-                                />
-                              </td>
-                              <td className="mobile-hide-requesting">{card.tcgLow}</td>
-                              <td className="mobile-hide-requesting">
-                                {card.lineTotalUsd !== null
-                                  ? `$${card.lineTotalUsd.toFixed(2)}`
-                                  : 'N/A'}
-                              </td>
-                              <td>
-                                <input
-                                  className="ask-input"
-                                  type="text"
-                                  inputMode="decimal"
-                                  placeholder="0.00"
-                                  value={card.askingInput ?? formatCents(card.askingPriceCents)}
-                                  onChange={(event) =>
-                                    handleRequestingAskingPriceChange(index, event.target.value)
-                                  }
-                                  onBlur={() => handleRequestingAskingPriceBlur(index)}
-                                />
-                              </td>
-                              <td className="requesting-cell mobile-hide-requesting">
-                                <select
-                                  className="market-status-select"
-                                  value={card.marketStatus || 'have'}
-                                  onChange={(event) => handleMarketStatusChange(index, event.target.value)}
-                                  aria-label={`Status ${card.resolvedName}`}
-                                >
-                                  <option value="have">Owned</option>
-                                  <option value="requesting">Wants</option>
-                                  <option value="offering">Giving</option>
-                                </select>
-                              </td>
-                              <td className="mobile-hide-requesting">
-                                <div className="row-actions">
-                                  {card.tcgUrl ? (
-                                    <a href={card.tcgUrl} target="_blank" rel="noreferrer">
-                                      TCGPlayer
-                                    </a>
-                                  ) : card.error ? (
-                                    <span>{card.error}</span>
-                                  ) : (
-                                    <span>No link</span>
-                                  )}
-                                  <button
-                                    type="button"
-                                    className="row-button danger"
-                                    onClick={() => handleDeleteSavedCard(card)}
-                                    disabled={
-                                      isCardPriceLoading ||
-                                      isCardsSaving ||
-                                      deletingCardKey ===
-                                        String(
-                                          card.scryfallId ||
-                                            String(card.resolvedName || card.inputName || '').trim()
-                                        )
-                                    }
-                                  >
-                                    {deletingCardKey ===
-                                    String(
-                                      card.scryfallId ||
-                                        String(card.resolvedName || card.inputName || '').trim()
-                                    )
-                                      ? 'Deleting...'
-                                      : 'Delete'}
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                      </>
-                    )}
-
-                    <h2>Giving</h2>
-                    <p className="table-total">
-                      Table Total: ${offeringTotal.toFixed(2)} · Giving Total Value: $
-                      {offeringTotalValue.toFixed(2)} · Giving Total: {offeringQtyTotal}{' '}
-                      {offeringQtyTotal === 1 ? 'card' : 'cards'}
-                    </p>
-                    {offeringPairs.length === 0 ? (
-                      <p className="notice subtle">No cards in your Giving section yet.</p>
-                    ) : (
-                      <>
-                        {renderMobileImageOnlyCards(
-                          offeringPairs,
-                          offeringMobileSelectedCardKey,
-                          setOfferingMobileSelectedCardKey,
-                          'Giving Amount',
-                          (card) => {
-                            const asking = formatCents(card.askingPriceCents);
-                            return asking ? `$${asking}` : 'N/A';
-                          }
-                        )}
-                        <table className="price-table my-cards-requesting-table desktop-table-only">
-                          <thead>
-                            <tr>
-                              <th>Pic</th>
-                              <th className="mobile-hide-requesting">Card</th>
-                              <th className="mobile-hide-requesting">Version</th>
-                              <th>Qty</th>
-                              <th>Ask Qty</th>
-                              <th className="mobile-hide-requesting">TCGPlayer Low</th>
-                              <th className="mobile-hide-requesting">Line Total</th>
-                              <th>Asking For</th>
-                              <th className="mobile-hide-requesting">Status</th>
-                              <th className="mobile-hide-requesting">Links / Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {offeringPairs.map(({ card, index }) => (
-                              <tr key={`${card.scryfallId || card.inputName || card.resolvedName}-offering-${index}`}>
+                        </thead>
+                        <tbody>
+                          {savedPairs.map(({ card, index }) => {
+                            const status = card.marketStatus || 'have';
+                            const isRequesting = status === 'requesting';
+                            const isOffering = status === 'offering';
+                            const isHave = status === 'have';
+                            const wantedQty =
+                              card.askingQuantity === null || card.askingQuantity === undefined
+                                ? Math.max(0, Number(card.quantity) || 0)
+                                : card.askingQuantity;
+                            const cardKey = String(
+                              card.scryfallId ||
+                                String(card.resolvedName || card.inputName || '').trim()
+                            );
+                            return (
+                              <tr key={`${cardKey}-${index}`}>
                                 <td>
                                   {card.imageSmall ? (
                                     <div className="thumb-wrap">
@@ -3033,116 +2651,82 @@ export default function App() {
                                     </div>
                                   ) : null}
                                 </td>
-                                <td className="mobile-hide-requesting">{card.resolvedName}</td>
-                                <td className="mobile-hide-requesting">
-                                  <button
-                                    type="button"
-                                    className="version-button"
-                                    onClick={() =>
-                                      loadVersionOptionsFor(
-                                        card.scryfallId || card.resolvedName || card.inputName,
-                                        card.resolvedName || card.inputName
-                                      )
-                                    }
-                                  >
-                                    {card.setCode && card.collectorNumber
-                                      ? `${card.setCode.toUpperCase()} #${card.collectorNumber}`
-                                      : 'Choose'}
-                                  </button>
-                                  {versionLoadingKey ===
-                                  (card.scryfallId || card.resolvedName || card.inputName) ? (
-                                    <div className="version-picker">Loading...</div>
-                                  ) : null}
-                                  {versionOptionsByKey[
-                                    card.scryfallId || card.resolvedName || card.inputName
-                                  ]?.length ? (
-                                    <div className="version-picker">
-                                      <select
-                                        value={card.scryfallId || ''}
-                                        onChange={(event) => handleVersionChange(index, event.target.value)}
-                                      >
-                                        {versionOptionsByKey[
-                                          card.scryfallId || card.resolvedName || card.inputName
-                                        ].map((option) => (
-                                          <option key={option.id} value={option.id}>
-                                            {option.set.toUpperCase()} #{option.collectorNumber} ·{' '}
-                                            {option.setName} · {option.releasedAt}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                  ) : null}
+                                <td className="card-name-cell">{card.resolvedName || card.inputName}</td>
+                                <td>
+                                  {isHave || isOffering ? (
+                                    <input
+                                      className="qty-input"
+                                      type="number"
+                                      min={0}
+                                      step={1}
+                                      value={card.quantity}
+                                      onChange={(e) => handleQuantityChange(index, e.target.value)}
+                                    />
+                                  ) : '—'}
                                 </td>
                                 <td>
-                                  <input
-                                    className="qty-input"
-                                    type="number"
-                                    min={0}
-                                    step={1}
-                                    value={card.quantity}
-                                    onChange={(event) =>
-                                      handleQuantityChange(index, event.target.value)
-                                    }
-                                  />
+                                  {isRequesting ? (
+                                    <input
+                                      className="qty-input"
+                                      type="number"
+                                      min={0}
+                                      step={1}
+                                      value={wantedQty}
+                                      onChange={(e) =>
+                                        handleRequestingAskingQuantityChange(index, e.target.value)
+                                      }
+                                    />
+                                  ) : '—'}
                                 </td>
                                 <td>
-                                  <input
-                                    className="qty-input"
-                                    type="number"
-                                    min={0}
-                                    step={1}
-                                    value={
-                                      card.askingQuantity === null || card.askingQuantity === undefined
-                                        ? Math.max(0, Number(card.quantity) || 0)
-                                        : card.askingQuantity
-                                    }
-                                    onChange={(event) =>
-                                      handleRequestingAskingQuantityChange(index, event.target.value)
-                                    }
-                                  />
-                                </td>
-                                <td className="mobile-hide-requesting">{card.tcgLow}</td>
-                                <td className="mobile-hide-requesting">
-                                  {card.lineTotalUsd !== null
-                                    ? `$${card.lineTotalUsd.toFixed(2)}`
-                                    : 'N/A'}
+                                  {isOffering ? (
+                                    <input
+                                      className="ask-input"
+                                      type="text"
+                                      inputMode="decimal"
+                                      placeholder="0.00"
+                                      value={card.askingInput ?? formatCents(card.askingPriceCents)}
+                                      onChange={(e) =>
+                                        handleRequestingAskingPriceChange(index, e.target.value)
+                                      }
+                                      onBlur={() => handleRequestingAskingPriceBlur(index)}
+                                    />
+                                  ) : '—'}
                                 </td>
                                 <td>
-                                  <input
-                                    className="ask-input"
-                                    type="text"
-                                    inputMode="decimal"
-                                    placeholder="0.00"
-                                    value={card.askingInput ?? formatCents(card.askingPriceCents)}
-                                    onChange={(event) =>
-                                      handleRequestingAskingPriceChange(index, event.target.value)
-                                    }
-                                    onBlur={() => handleRequestingAskingPriceBlur(index)}
-                                  />
+                                  {isRequesting ? (
+                                    <input
+                                      className="ask-input"
+                                      type="text"
+                                      inputMode="decimal"
+                                      placeholder="0.00"
+                                      value={card.askingInput ?? formatCents(card.askingPriceCents)}
+                                      onChange={(e) =>
+                                        handleRequestingAskingPriceChange(index, e.target.value)
+                                      }
+                                      onBlur={() => handleRequestingAskingPriceBlur(index)}
+                                    />
+                                  ) : '—'}
                                 </td>
-                                <td className="requesting-cell mobile-hide-requesting">
+                                <td>
                                   <select
                                     className="market-status-select"
-                                    value={card.marketStatus || 'have'}
-                                    onChange={(event) => handleMarketStatusChange(index, event.target.value)}
-                                    aria-label={`Status ${card.resolvedName}`}
+                                    value={status}
+                                    onChange={(e) => handleMarketStatusChange(index, e.target.value)}
+                                    aria-label={`Status for ${card.resolvedName}`}
                                   >
                                     <option value="have">Owned</option>
                                     <option value="requesting">Wants</option>
                                     <option value="offering">Giving</option>
                                   </select>
                                 </td>
-                                <td className="mobile-hide-requesting">
+                                <td>
                                   <div className="row-actions">
                                     {card.tcgUrl ? (
                                       <a href={card.tcgUrl} target="_blank" rel="noreferrer">
                                         TCGPlayer
                                       </a>
-                                    ) : card.error ? (
-                                      <span>{card.error}</span>
-                                    ) : (
-                                      <span>No link</span>
-                                    )}
+                                    ) : null}
                                     <button
                                       type="button"
                                       className="row-button danger"
@@ -3150,28 +2734,18 @@ export default function App() {
                                       disabled={
                                         isCardPriceLoading ||
                                         isCardsSaving ||
-                                        deletingCardKey ===
-                                          String(
-                                            card.scryfallId ||
-                                              String(card.resolvedName || card.inputName || '').trim()
-                                          )
+                                        deletingCardKey === cardKey
                                       }
                                     >
-                                      {deletingCardKey ===
-                                      String(
-                                        card.scryfallId ||
-                                          String(card.resolvedName || card.inputName || '').trim()
-                                      )
-                                        ? 'Deleting...'
-                                        : 'Delete'}
+                                      {deletingCardKey === cardKey ? 'Deleting…' : 'Delete'}
                                     </button>
                                   </div>
                                 </td>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     )}
                   </div>
                 ) : (
