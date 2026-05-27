@@ -763,6 +763,20 @@ h1 {
   text-overflow: ellipsis;
 }
 
+.tcg-price-cell {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.tcg-price-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.tcg-price-link:hover {
+  text-decoration: underline;
+}
+
 .dashboard-actions {
   margin: 0.4rem 0 0.2rem;
   display: flex;
@@ -1115,15 +1129,16 @@ h1 {
     max-width: 1.05rem;
   }
 
-  /* Unified My Cards table: hide Card, price, and Actions columns on mobile */
+  /* Unified My Cards table: hide Card, price cols, and Actions on mobile */
+  /* Columns: 1=Pic 2=Card 3=TCGPrice 4=#Owned 5=#Wanted 6=AskPrice 7=OfferPrice 8=Actions */
   .my-cards-unified-table th:nth-child(2),
   .my-cards-unified-table td:nth-child(2),
-  .my-cards-unified-table th:nth-child(5),
-  .my-cards-unified-table td:nth-child(5),
   .my-cards-unified-table th:nth-child(6),
   .my-cards-unified-table td:nth-child(6),
   .my-cards-unified-table th:nth-child(7),
-  .my-cards-unified-table td:nth-child(7) {
+  .my-cards-unified-table td:nth-child(7),
+  .my-cards-unified-table th:nth-child(8),
+  .my-cards-unified-table td:nth-child(8) {
     display: none !important;
   }
 }

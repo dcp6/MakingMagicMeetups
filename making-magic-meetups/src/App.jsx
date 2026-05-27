@@ -2893,6 +2893,7 @@ export default function App() {
                           <tr>
                             <th>Pic</th>
                             <th>Card</th>
+                            <th>TCG Price</th>
                             <th># Owned</th>
                             <th># Wanted</th>
                             <th>Ask Price</th>
@@ -2941,6 +2942,15 @@ export default function App() {
                                   ) : null}
                                 </td>
                                 <td className="card-name-cell">{card.resolvedName || card.inputName}</td>
+                                <td className="tcg-price-cell">
+                                  {card.tcgUrl ? (
+                                    <a href={card.tcgUrl} target="_blank" rel="noreferrer" className="tcg-price-link">
+                                      {card.tcgLow || 'N/A'}
+                                    </a>
+                                  ) : (
+                                    card.tcgLow || 'N/A'
+                                  )}
+                                </td>
                                 <td>
                                   <input
                                     className="qty-input"
