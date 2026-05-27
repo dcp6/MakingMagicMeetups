@@ -1282,6 +1282,10 @@ export default function App() {
           card.askingPriceCents === null || card.askingPriceCents === undefined
             ? null
             : Number(card.askingPriceCents);
+        const offerPriceCents =
+          card.offerPriceCents === null || card.offerPriceCents === undefined
+            ? null
+            : Number(card.offerPriceCents);
         const parsedQuantity = Number(card.quantity);
         const quantity =
           Number.isFinite(parsedQuantity) && parsedQuantity >= 0 ? Math.floor(parsedQuantity) : 1;
@@ -1304,6 +1308,7 @@ export default function App() {
           requesting: marketStatus === 'requesting',
           askingQuantity,
           askingPriceCents,
+          offerPriceCents,
           scryfallId: card.scryfallId || null,
           setCode: card.setCode || null,
           setName: card.setName || null,
@@ -1330,6 +1335,7 @@ export default function App() {
       const unitUsd = parseUsdPrice(priced.tcgLow);
       const scryfallId = priced.scryfallId ?? entries[index]?.scryfallId ?? null;
       const askingPriceCents = entries[index]?.askingPriceCents ?? null;
+      const offerPriceCents = entries[index]?.offerPriceCents ?? null;
       const setCode = priced.setCode ?? entries[index]?.setCode ?? null;
       const setName = priced.setName ?? entries[index]?.setName ?? null;
       const collectorNumber = priced.collectorNumber ?? entries[index]?.collectorNumber ?? null;
@@ -1351,6 +1357,8 @@ export default function App() {
         askingQuantity,
         askingPriceCents,
         askingInput: formatCents(askingPriceCents),
+        offerPriceCents,
+        offerInput: formatCents(offerPriceCents),
         unitUsd,
         lineTotalUsd: unitUsd !== null ? unitUsd * quantity : null,
         scryfallId,
@@ -1442,6 +1450,10 @@ export default function App() {
               entry.askingPriceCents === null || entry.askingPriceCents === undefined
                 ? null
                 : Number(entry.askingPriceCents),
+            offerPriceCents:
+              entry.offerPriceCents === null || entry.offerPriceCents === undefined
+                ? null
+                : Number(entry.offerPriceCents),
             scryfallId: entry.scryfallId || null,
             setCode: entry.setCode || null,
             setName: entry.setName || null,
@@ -1544,6 +1556,35 @@ export default function App() {
         return {
           ...card,
           askingInput: formatCents(card.askingPriceCents)
+        };
+      })
+    );
+  }
+
+  function handleOfferPriceChange(index, nextValue) {
+    const offerPriceCents = parseDollarsToCents(nextValue);
+    setUploadedCards((previous) =>
+      previous.map((card, i) =>
+        i === index
+          ? {
+              ...card,
+              offerInput: nextValue,
+              offerPriceCents
+            }
+          : card
+      )
+    );
+  }
+
+  function handleOfferPriceBlur(index) {
+    setUploadedCards((previous) =>
+      previous.map((card, i) => {
+        if (i !== index) {
+          return card;
+        }
+        return {
+          ...card,
+          offerInput: formatCents(card.offerPriceCents)
         };
       })
     );
@@ -2528,7 +2569,7 @@ export default function App() {
                               <select className="market-status-select" value={card.marketStatus || 'have'} onChange={(event) => handleMarketStatusChange(index, event.target.value)} aria-label={`Status ${card.resolvedName}`}>
                                 <option value="have">Owned</option>
                                 <option value="requesting">Wants</option>
-                                <option value="offering">Giving</option>
+                                <option value="offering">Offering</option>
                               </select>
                             </td>
                             <td>{card.tcgUrl ? <a href={card.tcgUrl} target="_blank" rel="noreferrer">TCGPlayer</a> : card.error ? card.error : 'No link'}</td>
@@ -2582,7 +2623,7 @@ export default function App() {
                     <h2>My Cards</h2>
                     <p className="notice subtle">
                       {savedQtyTotal} {savedQtyTotal === 1 ? 'card' : 'cards'} total ·
-                      Owned: {haveQtyTotal} · Wants: {requestingQtyTotal} · Giving: {offeringQtyTotal}
+                      Owned: {haveQtyTotal} · Wants: {requestingQtyTotal} · Offering: {offeringQtyTotal}
                     </p>
                     {renderMobileImageOnlyCards(
                       savedPairs,
@@ -2602,16 +2643,12 @@ export default function App() {
                             <th># Owned</th>
                             <th># Wanted</th>
                             <th>Ask Price</th>
-                            <th>Give Price</th>
-                            <th>Status</th>
+                            <th>Offer Price</th>
                             <th>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
                           {savedPairs.map(({ card, index }) => {
-                            const status = card.marketStatus || 'have';
-                            const isOffering = status === 'offering';
-                            const isRequesting = status === 'requesting';
                             const wantedQty =
                               card.askingQuantity === null || card.askingQuantity === undefined
                                 ? 0
@@ -2674,46 +2711,30 @@ export default function App() {
                                   />
                                 </td>
                                 <td>
-                                  {isOffering ? (
-                                    <input
-                                      className="ask-input"
-                                      type="text"
-                                      inputMode="decimal"
-                                      placeholder="0.00"
-                                      value={card.askingInput ?? formatCents(card.askingPriceCents)}
-                                      onChange={(e) =>
-                                        handleRequestingAskingPriceChange(index, e.target.value)
-                                      }
-                                      onBlur={() => handleRequestingAskingPriceBlur(index)}
-                                    />
-                                  ) : '—'}
+                                  <input
+                                    className="ask-input"
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="0.00"
+                                    value={card.askingInput ?? formatCents(card.askingPriceCents)}
+                                    onChange={(e) =>
+                                      handleRequestingAskingPriceChange(index, e.target.value)
+                                    }
+                                    onBlur={() => handleRequestingAskingPriceBlur(index)}
+                                  />
                                 </td>
                                 <td>
-                                  {isRequesting ? (
-                                    <input
-                                      className="ask-input"
-                                      type="text"
-                                      inputMode="decimal"
-                                      placeholder="0.00"
-                                      value={card.askingInput ?? formatCents(card.askingPriceCents)}
-                                      onChange={(e) =>
-                                        handleRequestingAskingPriceChange(index, e.target.value)
-                                      }
-                                      onBlur={() => handleRequestingAskingPriceBlur(index)}
-                                    />
-                                  ) : '—'}
-                                </td>
-                                <td>
-                                  <select
-                                    className="market-status-select"
-                                    value={status}
-                                    onChange={(e) => handleMarketStatusChange(index, e.target.value)}
-                                    aria-label={`Status for ${card.resolvedName}`}
-                                  >
-                                    <option value="have">Owned</option>
-                                    <option value="requesting">Wants</option>
-                                    <option value="offering">Giving</option>
-                                  </select>
+                                  <input
+                                    className="ask-input"
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="0.00"
+                                    value={card.offerInput ?? formatCents(card.offerPriceCents)}
+                                    onChange={(e) =>
+                                      handleOfferPriceChange(index, e.target.value)
+                                    }
+                                    onBlur={() => handleOfferPriceBlur(index)}
+                                  />
                                 </td>
                                 <td>
                                   <div className="row-actions">

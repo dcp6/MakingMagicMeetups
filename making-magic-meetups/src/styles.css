@@ -1122,8 +1122,8 @@ h1 {
   .my-cards-unified-table td:nth-child(5),
   .my-cards-unified-table th:nth-child(6),
   .my-cards-unified-table td:nth-child(6),
-  .my-cards-unified-table th:nth-child(8),
-  .my-cards-unified-table td:nth-child(8) {
+  .my-cards-unified-table th:nth-child(7),
+  .my-cards-unified-table td:nth-child(7) {
     display: none !important;
   }
 }

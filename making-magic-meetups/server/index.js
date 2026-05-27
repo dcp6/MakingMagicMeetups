@@ -417,6 +417,7 @@ for (const column of [
   'requesting INTEGER',
   'asking_quantity INTEGER',
   'asking_price_cents INTEGER',
+  'offer_price_cents INTEGER',
   'scryfall_id TEXT',
   'set_code TEXT',
   'set_name TEXT',
@@ -584,6 +585,7 @@ const upsertMyCardReplace = db.prepare(`
     requesting,
     asking_quantity,
     asking_price_cents,
+    offer_price_cents,
     scryfall_id,
     set_code,
     set_name,
@@ -593,12 +595,13 @@ const upsertMyCardReplace = db.prepare(`
     image_small_back,
     image_normal_back
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(account_id, card_name) DO UPDATE SET
     quantity = excluded.quantity,
     requesting = excluded.requesting,
     asking_quantity = excluded.asking_quantity,
     asking_price_cents = excluded.asking_price_cents,
+    offer_price_cents = excluded.offer_price_cents,
     scryfall_id = excluded.scryfall_id,
     set_code = excluded.set_code,
     set_name = excluded.set_name,
@@ -618,6 +621,7 @@ const upsertMyCardAdd = db.prepare(`
     requesting,
     asking_quantity,
     asking_price_cents,
+    offer_price_cents,
     scryfall_id,
     set_code,
     set_name,
@@ -627,7 +631,7 @@ const upsertMyCardAdd = db.prepare(`
     image_small_back,
     image_normal_back
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(account_id, card_name) DO UPDATE SET
     quantity = my_cards.quantity + excluded.quantity,
     requesting = MAX(my_cards.requesting, excluded.requesting),
@@ -635,6 +639,7 @@ const upsertMyCardAdd = db.prepare(`
       COALESCE(my_cards.asking_quantity, my_cards.quantity) +
       COALESCE(excluded.asking_quantity, excluded.quantity),
     asking_price_cents = COALESCE(excluded.asking_price_cents, my_cards.asking_price_cents),
+    offer_price_cents = COALESCE(excluded.offer_price_cents, my_cards.offer_price_cents),
     scryfall_id = COALESCE(excluded.scryfall_id, my_cards.scryfall_id),
     set_code = COALESCE(excluded.set_code, my_cards.set_code),
     set_name = COALESCE(excluded.set_name, my_cards.set_name),
@@ -653,6 +658,7 @@ const listMyCards = db.prepare(`
     requesting,
     asking_quantity,
     asking_price_cents,
+    offer_price_cents,
     scryfall_id,
     set_code,
     set_name,
@@ -780,6 +786,23 @@ function parseAskingPriceCentsFromSubmittedCard(submitted) {
 
   // Back-compat: accept dollars in askingPrice / asking_price.
   return parseAskingPriceCents(submitted?.askingPrice ?? submitted?.asking_price);
+}
+
+function parseOfferPriceCentsFromSubmittedCard(submitted) {
+  // Preferred: client sends cents directly.
+  if (submitted && Object.prototype.hasOwnProperty.call(submitted, 'offerPriceCents')) {
+    const raw = submitted.offerPriceCents;
+    if (raw === null || raw === undefined || raw === '') {
+      return null;
+    }
+    const cents = typeof raw === 'string' ? Number(raw) : raw;
+    if (!Number.isFinite(cents)) {
+      return null;
+    }
+    const rounded = Math.round(cents);
+    return rounded >= 0 ? rounded : null;
+  }
+  return null;
 }
 
 function marketStatusToCode(value) {
@@ -1267,6 +1290,9 @@ async function validatePostgresRuntimeOrExit() {
       );
       process.exit(1);
     }
+
+    // Incremental column migrations — safe to run repeatedly (IF NOT EXISTS).
+    await pgQuery(`ALTER TABLE my_cards ADD COLUMN IF NOT EXISTS offer_price_cents INTEGER`);
   } catch (error) {
     console.error(`Startup failed: could not connect to Postgres (${error.message || error}).`);
     process.exit(1);
@@ -1318,7 +1344,7 @@ async function listMyCardsRuntime(accountId) {
   const { rows } = await pgQuery(
     `
       SELECT
-        card_name, quantity, requesting, asking_quantity, asking_price_cents,
+        card_name, quantity, requesting, asking_quantity, asking_price_cents, offer_price_cents,
         scryfall_id, set_code, set_name, collector_number, image_small, image_normal,
         image_small_back, image_normal_back
       FROM my_cards
@@ -1356,6 +1382,7 @@ async function saveCardsRuntime(accountId, entries, saveMode) {
           entry.marketStatusCode ?? 0,
           normalizedAskQty,
           entry.askingPriceCents ?? null,
+          entry.offerPriceCents ?? null,
           entry.scryfallId ?? null,
           entry.setCode ?? null,
           entry.setName ?? null,
@@ -1384,16 +1411,17 @@ async function saveCardsRuntime(accountId, entries, saveMode) {
           `
             INSERT INTO my_cards (
               account_id, card_name, quantity, requesting, asking_quantity, asking_price_cents,
-              scryfall_id, set_code, set_name, collector_number, image_small, image_normal,
-              image_small_back, image_normal_back
+              offer_price_cents, scryfall_id, set_code, set_name, collector_number, image_small,
+              image_normal, image_small_back, image_normal_back
             )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
             ON CONFLICT(account_id, card_name) DO UPDATE SET
               quantity = my_cards.quantity + EXCLUDED.quantity,
               requesting = GREATEST(my_cards.requesting, EXCLUDED.requesting),
               asking_quantity = COALESCE(my_cards.asking_quantity, my_cards.quantity) +
                 COALESCE(EXCLUDED.asking_quantity, EXCLUDED.quantity),
               asking_price_cents = COALESCE(EXCLUDED.asking_price_cents, my_cards.asking_price_cents),
+              offer_price_cents = COALESCE(EXCLUDED.offer_price_cents, my_cards.offer_price_cents),
               scryfall_id = COALESCE(EXCLUDED.scryfall_id, my_cards.scryfall_id),
               set_code = COALESCE(EXCLUDED.set_code, my_cards.set_code),
               set_name = COALESCE(EXCLUDED.set_name, my_cards.set_name),
@@ -1411,6 +1439,7 @@ async function saveCardsRuntime(accountId, entries, saveMode) {
             entry.marketStatusCode ?? 0,
             normalizedAskQty,
             entry.askingPriceCents ?? null,
+            entry.offerPriceCents ?? null,
             entry.scryfallId ?? null,
             entry.setCode ?? null,
             entry.setName ?? null,
@@ -1426,15 +1455,16 @@ async function saveCardsRuntime(accountId, entries, saveMode) {
           `
             INSERT INTO my_cards (
               account_id, card_name, quantity, requesting, asking_quantity, asking_price_cents,
-              scryfall_id, set_code, set_name, collector_number, image_small, image_normal,
-              image_small_back, image_normal_back
+              offer_price_cents, scryfall_id, set_code, set_name, collector_number, image_small,
+              image_normal, image_small_back, image_normal_back
             )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
             ON CONFLICT(account_id, card_name) DO UPDATE SET
               quantity = EXCLUDED.quantity,
               requesting = EXCLUDED.requesting,
               asking_quantity = EXCLUDED.asking_quantity,
               asking_price_cents = EXCLUDED.asking_price_cents,
+              offer_price_cents = EXCLUDED.offer_price_cents,
               scryfall_id = EXCLUDED.scryfall_id,
               set_code = EXCLUDED.set_code,
               set_name = EXCLUDED.set_name,
@@ -1452,6 +1482,7 @@ async function saveCardsRuntime(accountId, entries, saveMode) {
             entry.marketStatusCode ?? 0,
             normalizedAskQty,
             entry.askingPriceCents ?? null,
+            entry.offerPriceCents ?? null,
             entry.scryfallId ?? null,
             entry.setCode ?? null,
             entry.setName ?? null,
@@ -2354,6 +2385,10 @@ app.get('/api/cards', async (req, res) => {
       row.asking_price_cents === null || row.asking_price_cents === undefined
         ? null
         : Number(row.asking_price_cents),
+    offerPriceCents:
+      row.offer_price_cents === null || row.offer_price_cents === undefined
+        ? null
+        : Number(row.offer_price_cents),
     scryfallId: row.scryfall_id || null,
     setCode: row.set_code || null,
     setName: row.set_name || null,
@@ -2394,6 +2429,7 @@ app.post('/api/cards', async (req, res) => {
     let marketStatusCode = 0;
     let askingQuantity = null;
     let askingPriceCents = null;
+    let offerPriceCents = null;
     let scryfallId = null;
     let setCode = null;
     let setName = null;
@@ -2421,6 +2457,7 @@ app.post('/api/cards', async (req, res) => {
         }
       }
       askingPriceCents = parseAskingPriceCentsFromSubmittedCard(submitted);
+      offerPriceCents = parseOfferPriceCentsFromSubmittedCard(submitted);
       scryfallId = submitted.scryfallId ? String(submitted.scryfallId).trim() : null;
       setCode = submitted.setCode ? String(submitted.setCode).trim() : null;
       setName = submitted.setName ? String(submitted.setName).trim() : null;
@@ -2445,6 +2482,9 @@ app.post('/api/cards', async (req, res) => {
       if (askingPriceCents !== null) {
         existing.askingPriceCents = askingPriceCents;
       }
+      if (offerPriceCents !== null) {
+        existing.offerPriceCents = offerPriceCents;
+      }
       if (askingQuantity !== null) {
         existing.askingQuantity = askingQuantity;
       }
@@ -2463,6 +2503,7 @@ app.post('/api/cards', async (req, res) => {
         marketStatusCode,
         askingQuantity,
         askingPriceCents,
+        offerPriceCents,
         scryfallId,
         setCode,
         setName,
