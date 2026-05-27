@@ -2610,12 +2610,11 @@ export default function App() {
                         <tbody>
                           {savedPairs.map(({ card, index }) => {
                             const status = card.marketStatus || 'have';
-                            const isRequesting = status === 'requesting';
                             const isOffering = status === 'offering';
-                            const isHave = status === 'have';
+                            const isRequesting = status === 'requesting';
                             const wantedQty =
                               card.askingQuantity === null || card.askingQuantity === undefined
-                                ? Math.max(0, Number(card.quantity) || 0)
+                                ? 0
                                 : card.askingQuantity;
                             const cardKey = String(
                               card.scryfallId ||
@@ -2653,30 +2652,26 @@ export default function App() {
                                 </td>
                                 <td className="card-name-cell">{card.resolvedName || card.inputName}</td>
                                 <td>
-                                  {isHave || isOffering ? (
-                                    <input
-                                      className="qty-input"
-                                      type="number"
-                                      min={0}
-                                      step={1}
-                                      value={card.quantity}
-                                      onChange={(e) => handleQuantityChange(index, e.target.value)}
-                                    />
-                                  ) : '—'}
+                                  <input
+                                    className="qty-input"
+                                    type="number"
+                                    min={0}
+                                    step={1}
+                                    value={card.quantity}
+                                    onChange={(e) => handleQuantityChange(index, e.target.value)}
+                                  />
                                 </td>
                                 <td>
-                                  {isRequesting ? (
-                                    <input
-                                      className="qty-input"
-                                      type="number"
-                                      min={0}
-                                      step={1}
-                                      value={wantedQty}
-                                      onChange={(e) =>
-                                        handleRequestingAskingQuantityChange(index, e.target.value)
-                                      }
-                                    />
-                                  ) : '—'}
+                                  <input
+                                    className="qty-input"
+                                    type="number"
+                                    min={0}
+                                    step={1}
+                                    value={wantedQty}
+                                    onChange={(e) =>
+                                      handleRequestingAskingQuantityChange(index, e.target.value)
+                                    }
+                                  />
                                 </td>
                                 <td>
                                   {isOffering ? (
