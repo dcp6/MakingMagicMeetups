@@ -3015,7 +3015,7 @@ export default function App() {
                                 }}
                               >
                                 <strong>{u.username}</strong>
-                                {u.fullName ? ` — ${u.fullName}` : ''}
+                                {''}
                               </button>
                             </li>
                           ))}
@@ -3072,7 +3072,7 @@ export default function App() {
                         >
                           <div className="thread-item-top">
                             <span className="thread-name">
-                              {thread.otherFullName || thread.otherUsername}
+                              {thread.otherUsername}
                             </span>
                             {thread.unreadCount > 0 && (
                               <span className="unread-badge">{thread.unreadCount}</span>
@@ -3094,8 +3094,7 @@ export default function App() {
                   {activeThread ? (
                     <>
                       <div className="thread-header">
-                        <strong>{activeThread.otherFullName || activeThread.otherUsername}</strong>
-                        <span className="thread-username">@{activeThread.otherUsername}</span>
+                        <strong>@{activeThread.otherUsername}</strong>
                       </div>
                       <div className="thread-messages">
                         {activeThread.messages.map((msg) => (
