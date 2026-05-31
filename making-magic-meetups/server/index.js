@@ -458,6 +458,7 @@ db.exec(`
         asking_price_cents INTEGER,
         offer_price_cents INTEGER,
         condition TEXT,
+        foil INTEGER NOT NULL DEFAULT 0,
         scryfall_id TEXT,
         set_code TEXT,
         set_name TEXT,
