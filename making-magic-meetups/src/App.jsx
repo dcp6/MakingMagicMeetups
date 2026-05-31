@@ -57,6 +57,31 @@ const events = [
   }
 ];
 
+const STATUS_OPTIONS = [
+  { value: 'have',       label: 'Own',   mod: 'have' },
+  { value: 'requesting', label: 'Want',  mod: 'want' },
+  { value: 'offering',   label: 'Offer', mod: 'offer' },
+];
+
+function StatusToggle({ value, onChange, ariaLabel }) {
+  const active = value || 'have';
+  return (
+    <div className="status-toggle" role="group" aria-label={ariaLabel}>
+      {STATUS_OPTIONS.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          className={`status-toggle-btn status-toggle-btn--${opt.mod}${active === opt.value ? ' active' : ''}`}
+          onClick={() => onChange(opt.value)}
+          aria-pressed={active === opt.value}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function App() {
   const isDetectingApiRef = useRef(false);
   const [apiBaseUrl, setApiBaseUrl] = useState(() => {
@@ -2937,11 +2962,11 @@ export default function App() {
                               </label>
                             </td>
                             <td className="requesting-cell">
-                              <select className="market-status-select" value={card.marketStatus || 'have'} onChange={(event) => handleMarketStatusChange(index, event.target.value)} aria-label={`Status ${card.resolvedName}`}>
-                                <option value="have">Owned</option>
-                                <option value="requesting">Wants</option>
-                                <option value="offering">Offering</option>
-                              </select>
+                              <StatusToggle
+                                value={card.marketStatus || 'have'}
+                                onChange={(v) => handleMarketStatusChange(index, v)}
+                                ariaLabel={`Status for ${card.resolvedName || card.inputName}`}
+                              />
                             </td>
                             <td>{card.tcgUrl ? <a href={card.tcgUrl} target="_blank" rel="noreferrer">TCGPlayer</a> : card.error ? card.error : 'No link'}</td>
                           </tr>
@@ -3103,16 +3128,11 @@ export default function App() {
                                   ) : null}
                                 </td>
                                 <td>
-                                  <select
-                                    className="market-status-select"
+                                  <StatusToggle
                                     value={card.marketStatus || 'have'}
-                                    onChange={(e) => handleMarketStatusChange(index, e.target.value)}
-                                    aria-label={`Status for ${card.resolvedName || card.inputName}`}
-                                  >
-                                    <option value="have">Owned</option>
-                                    <option value="requesting">Wants</option>
-                                    <option value="offering">Offering</option>
-                                  </select>
+                                    onChange={(v) => handleMarketStatusChange(index, v)}
+                                    ariaLabel={`Status for ${card.resolvedName || card.inputName}`}
+                                  />
                                 </td>
                                 <td>
                                   <select

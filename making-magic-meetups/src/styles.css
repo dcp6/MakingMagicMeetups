@@ -634,27 +634,59 @@ h1 {
 }
 
 .requesting-cell {
-  width: 6.2rem;
-  padding: 0.2rem !important;
+  width: auto;
+  padding: 0.2rem 0.3rem !important;
   text-align: center !important;
   vertical-align: middle !important;
+  white-space: nowrap;
 }
 
-.market-status-select {
-  min-height: 2rem;
-  width: 100%;
-  max-width: 5.4rem;
-  margin: 0 auto;
-  display: block;
-  border: 1px solid var(--stroke);
+/* ── Status segmented pill toggle ── */
+.status-toggle {
+  display: inline-flex;
   border-radius: 0.45rem;
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--text-900);
-  font-size: 0.78rem;
-  font-weight: 700;
-  padding: 0 0.35rem;
-  text-align: center;
-  text-align-last: center;
+  overflow: hidden;
+  border: 1px solid #d1d5db;
+  background: #f3f4f6;
+  gap: 0;
+}
+
+.status-toggle-btn {
+  border: none;
+  background: transparent;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 0.22rem 0.5rem;
+  cursor: pointer;
+  color: #6b7280;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.status-toggle-btn:not(:last-child) {
+  border-right: 1px solid #d1d5db;
+}
+
+.status-toggle-btn:hover:not(.active) {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.status-toggle-btn--have.active {
+  background: #374151;
+  color: #fff;
+}
+
+.status-toggle-btn--want.active {
+  background: #4f46e5;
+  color: #fff;
+}
+
+.status-toggle-btn--offer.active {
+  background: #16a34a;
+  color: #fff;
 }
 
 .requesting-toggle {
@@ -1398,13 +1430,9 @@ h1 {
     padding: 0.43rem 0.38rem;
   }
 
-  .requesting-cell {
-    width: 6rem;
-  }
-
-  .requesting-toggle {
-    min-width: 1.15rem;
-    max-width: 1.2rem;
+  .status-toggle-btn {
+    padding: 0.2rem 0.38rem;
+    font-size: 0.67rem;
   }
 
   .join .price-table {
@@ -1414,16 +1442,6 @@ h1 {
   .mobile-hide-saved,
   .mobile-hide-requesting {
     display: none !important;
-  }
-
-  .requesting-cell {
-    width: 5.8rem;
-  }
-
-  .requesting-toggle {
-    width: 1.05rem;
-    min-width: 1.05rem;
-    max-width: 1.05rem;
   }
 
   /* Unified My Cards table: hide Card, price cols, and Actions on mobile */
