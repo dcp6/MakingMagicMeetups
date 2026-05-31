@@ -1067,6 +1067,26 @@ h1 {
   color: #9ca3af;
 }
 
+.no-store-hint {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.no-store-hint a {
+  color: #6366f1;
+  text-decoration: underline;
+}
+
+.match-distance-cell {
+  white-space: nowrap;
+  text-align: center;
+}
+
+.mobile-match-distance {
+  margin-top: 0.2rem;
+  display: block;
+}
+
 .match-row--near {
   background: #f0fdf4 !important;
 }

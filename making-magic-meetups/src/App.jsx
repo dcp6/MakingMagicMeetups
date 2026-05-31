@@ -3234,8 +3234,10 @@ export default function App() {
                 <div className="card-upload-results matches-section">
                   <h2>Potential Matches</h2>
                   <p className="notice subtle">
-                    Users whose Ask or Offer price overlaps yours within 20% on the same card.
-                    {preferredStore ? ' 📍 Near your store matches appear first.' : ''}
+                    Users whose Ask or Offer price overlaps yours within 20% on the same card.{' '}
+                    {preferredStore
+                      ? '📍 Matches within 50 miles of your store appear first.'
+                      : <><a href="#/settings">Set a preferred store</a> to see distances and get nearby matches first.</>}
                   </p>
                   {matchesLoading ? (
                     <p className="notice subtle">Finding matches…</p>
@@ -3250,14 +3252,20 @@ export default function App() {
                         {cardMatches.map((match, i) => (
                           <div className={`mobile-match-row${match.nearStore ? ' mobile-match-row--near' : ''}`} key={`${match.username}-${match.cardName}-${i}`}>
                             <div className="mobile-match-info">
-                              <span className="mobile-match-card">
-                                {match.cardName}
-                                {match.nearStore ? <span className="near-store-badge" title={match.distanceMiles != null ? `~${match.distanceMiles} mi from your store` : 'Near your store'}>📍 {match.distanceMiles != null ? `${match.distanceMiles} mi` : 'Nearby'}</span> : null}
-                              </span>
+                              <span className="mobile-match-card">{match.cardName}</span>
                               <span className="mobile-match-meta">
                                 @{match.username} · {match.myRole === 'buyer' ? 'You buying' : 'You selling'} ·{' '}
                                 {match.myPriceCents != null ? `Your $${formatCents(match.myPriceCents)}` : ''}{' '}
                                 {match.theirPriceCents != null ? `/ Their $${formatCents(match.theirPriceCents)}` : ''}
+                              </span>
+                              <span className="mobile-match-distance">
+                                {match.distanceMiles != null ? (
+                                  match.nearStore
+                                    ? <span className="near-store-badge">📍 {match.distanceMiles} mi away</span>
+                                    : <span className="far-store-label">📍 {match.distanceMiles} mi away</span>
+                                ) : preferredStore ? (
+                                  <span className="far-store-label">Distance unknown</span>
+                                ) : null}
                               </span>
                             </div>
                             <button
@@ -3282,7 +3290,7 @@ export default function App() {
                             <th>My Role</th>
                             <th>My Price</th>
                             <th>Their Price</th>
-                            {preferredStore ? <th>Location</th> : null}
+                            <th>Distance</th>
                             <th>Action</th>
                           </tr>
                         </thead>
@@ -3302,19 +3310,21 @@ export default function App() {
                                   ? `$${formatCents(match.theirPriceCents)}`
                                   : '—'}
                               </td>
-                              {preferredStore ? (
-                                <td>
-                                  {match.nearStore ? (
-                                    <span className="near-store-badge" title={match.distanceMiles != null ? `~${match.distanceMiles} mi from your store` : 'Near your store'}>
-                                      📍 {match.distanceMiles != null ? `${match.distanceMiles} mi` : 'Nearby'}
-                                    </span>
+                              <td className="match-distance-cell">
+                                {match.distanceMiles != null ? (
+                                  match.nearStore ? (
+                                    <span className="near-store-badge">📍 {match.distanceMiles} mi</span>
                                   ) : (
-                                    <span className="far-store-label">
-                                      {match.distanceMiles != null ? `${match.distanceMiles} mi` : '—'}
-                                    </span>
-                                  )}
-                                </td>
-                              ) : null}
+                                    <span className="far-store-label">📍 {match.distanceMiles} mi</span>
+                                  )
+                                ) : preferredStore ? (
+                                  <span className="far-store-label" title="This user hasn't set a store location yet">—</span>
+                                ) : (
+                                  <span className="no-store-hint" title="Set a preferred store in Settings to see distances">
+                                    <a href="#/settings">Set store</a>
+                                  </span>
+                                )}
+                              </td>
                               <td>
                                 <button
                                   type="button"
