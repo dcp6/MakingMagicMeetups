@@ -1758,7 +1758,7 @@ export default function App() {
       await priceCards(entries);
       setShowingJustSavedCards(false);
       setCardUploadFeedback(
-        "Loaded card list for pricing. This is not saved yet. Click 'Save List' to store it permanently."
+        "Pricing loaded. Not saved yet — click 'Add to My Cards' to add these to your list."
       );
     } catch (_error) {
       setCardUploadFeedback('Could not save card list right now.');
@@ -1771,10 +1771,6 @@ export default function App() {
     setUploadedCards((previous) => {
       const next = applyQuantityChange(previous, index, nextValue);
       setCardCostTotal(recomputeCostTotal(next));
-
-      // Keep the textarea aligned with the current quantities.
-      const nextText = next.map((card) => `${card.quantity} ${card.resolvedName || card.inputName}`).join('\n');
-      setCardInputText(nextText);
       return next;
     });
   }
@@ -2832,9 +2828,8 @@ export default function App() {
                           <th>Pic</th>
                           <th className="mobile-hide-saved">Card</th>
                           <th className="mobile-hide-saved">Version</th>
-                          <th>Qty</th>
                           <th>TCGPlayer Low</th>
-                          <th className="mobile-hide-saved">Line Total</th>
+                          <th>Condition</th>
                           <th>Status</th>
                           <th className="mobile-hide-saved">Links</th>
                         </tr>
@@ -2874,10 +2869,26 @@ export default function App() {
                               ) : null}
                             </td>
                             <td>
-                              <input className="qty-input" type="number" min={0} step={1} value={card.quantity} onChange={(event) => handleQuantityChange(index, event.target.value)} />
+                              {card.tcgLow}
+                              {card.condition && card.condition !== 'nm' && card.nmPriceDisplay && card.nmPriceDisplay !== 'N/A' ? (
+                                <div className="nm-price-ref" title="Near Mint reference price">NM {card.nmPriceDisplay}</div>
+                              ) : null}
                             </td>
-                            <td>{card.tcgLow}</td>
-                            <td className="mobile-hide-saved">{card.lineTotalUsd !== null ? `$${card.lineTotalUsd.toFixed(2)}` : 'N/A'}</td>
+                            <td>
+                              <select
+                                className="condition-select"
+                                value={card.condition || ''}
+                                onChange={(e) => handleConditionChange(index, e.target.value || null)}
+                                aria-label={`Condition for ${card.resolvedName || card.inputName}`}
+                              >
+                                <option value="">— (NM)</option>
+                                <option value="nm">NM</option>
+                                <option value="lp">LP</option>
+                                <option value="mp">MP</option>
+                                <option value="hp">HP</option>
+                                <option value="dmg">DMG</option>
+                              </select>
+                            </td>
                             <td className="requesting-cell">
                               <select className="market-status-select" value={card.marketStatus || 'have'} onChange={(event) => handleMarketStatusChange(index, event.target.value)} aria-label={`Status ${card.resolvedName}`}>
                                 <option value="have">Owned</option>
@@ -2891,7 +2902,7 @@ export default function App() {
                       </tbody>
                       <tfoot>
                         <tr>
-                          <th colSpan={5}>Total</th>
+                          <th colSpan={4}>Total</th>
                           <th>${cardCostTotal.toFixed(2)}</th>
                           <th /><th />
                         </tr>
@@ -2900,8 +2911,8 @@ export default function App() {
                   </div>
                 ) : null}
 
-                {/* ── My Cards section ── */}
-                {uploadedCards.length > 0 ? (
+                {/* ── My Cards section — hidden while add-form is open so preview doesn't pollute it ── */}
+                {!showAddForm && uploadedCards.length > 0 ? (
                   <div className="card-upload-results">
                     <div className="section-header-row">
                       <div>
@@ -3124,7 +3135,7 @@ export default function App() {
                     )}
                   </div>
                 ) : (
-                  <p>No saved cards yet.</p>
+                  !showAddForm ? <p>No saved cards yet.</p> : null
                 )}
 
                 {/* ── Potential Matches ── */}
