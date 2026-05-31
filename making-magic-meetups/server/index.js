@@ -422,6 +422,7 @@ for (const column of [
   'asking_quantity INTEGER',
   'asking_price_cents INTEGER',
   'offer_price_cents INTEGER',
+  'market_price_cents INTEGER',
   'condition TEXT',
   'scryfall_id TEXT',
   'set_code TEXT',
@@ -461,6 +462,7 @@ db.exec(`
         asking_quantity INTEGER,
         asking_price_cents INTEGER,
         offer_price_cents INTEGER,
+        market_price_cents INTEGER,
         condition TEXT,
         foil INTEGER NOT NULL DEFAULT 0,
         scryfall_id TEXT,
@@ -720,16 +722,16 @@ const deleteAllMyCards = db.prepare(`DELETE FROM my_cards WHERE account_id = ?`)
 const insertMyCard = db.prepare(`
   INSERT INTO my_cards (
     account_id, card_name, quantity, requesting, asking_quantity, asking_price_cents,
-    offer_price_cents, condition, foil, scryfall_id, set_code, set_name, collector_number,
-    image_small, image_normal, image_small_back, image_normal_back
+    offer_price_cents, market_price_cents, condition, foil, scryfall_id, set_code, set_name,
+    collector_number, image_small, image_normal, image_small_back, image_normal_back
   )
-  VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const listMyCards = db.prepare(`
   SELECT
     id, card_name, quantity, requesting, asking_quantity, asking_price_cents, offer_price_cents,
-    condition, foil, scryfall_id, set_code, set_name, collector_number,
+    market_price_cents, condition, foil, scryfall_id, set_code, set_name, collector_number,
     image_small, image_normal, image_small_back, image_normal_back
   FROM my_cards
   WHERE account_id = ?
@@ -797,6 +799,17 @@ function parseOfferPriceCentsFromSubmittedCard(submitted) {
     return rounded >= 0 ? rounded : null;
   }
   return null;
+}
+
+function parseMarketPriceCentsFromSubmittedCard(submitted) {
+  if (!submitted || !Object.prototype.hasOwnProperty.call(submitted, 'marketPriceCents')) {
+    return null;
+  }
+  const raw = submitted.marketPriceCents;
+  if (raw === null || raw === undefined || raw === '') return null;
+  const cents = typeof raw === 'string' ? Number(raw) : raw;
+  if (!Number.isFinite(cents) || cents < 0) return null;
+  return Math.round(cents);
 }
 
 const VALID_CONDITIONS = new Set(['nm', 'lp', 'mp', 'hp', 'dmg']);
@@ -1310,6 +1323,7 @@ async function validatePostgresRuntimeOrExit() {
 
     // Incremental column migrations — safe to run repeatedly (IF NOT EXISTS).
     await pgQuery(`ALTER TABLE my_cards ADD COLUMN IF NOT EXISTS offer_price_cents INTEGER`);
+    await pgQuery(`ALTER TABLE my_cards ADD COLUMN IF NOT EXISTS market_price_cents INTEGER`);
     await pgQuery(`ALTER TABLE my_cards ADD COLUMN IF NOT EXISTS condition TEXT`);
     await pgQuery(`ALTER TABLE my_cards ADD COLUMN IF NOT EXISTS foil INTEGER NOT NULL DEFAULT 0`);
     await pgQuery(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS preferred_store_latitude DOUBLE PRECISION`);
@@ -1384,8 +1398,8 @@ async function listMyCardsRuntime(accountId) {
     `
       SELECT
         id, card_name, quantity, requesting, asking_quantity, asking_price_cents, offer_price_cents,
-        condition, scryfall_id, set_code, set_name, collector_number, image_small, image_normal,
-        image_small_back, image_normal_back
+        market_price_cents, condition, scryfall_id, set_code, set_name, collector_number,
+        image_small, image_normal, image_small_back, image_normal_back
       FROM my_cards
       WHERE account_id = $1
       ORDER BY id ASC
@@ -1419,6 +1433,7 @@ async function saveCardsRuntime(accountId, entries, saveMode) {
           null,
           entry.askingPriceCents ?? null,
           entry.offerPriceCents ?? null,
+          entry.marketPriceCents ?? null,
           entry.condition ?? null,
           entry.foil ? 1 : 0,
           entry.scryfallId ?? null,
@@ -1445,10 +1460,10 @@ async function saveCardsRuntime(accountId, entries, saveMode) {
         `
           INSERT INTO my_cards (
             account_id, card_name, quantity, requesting, asking_quantity, asking_price_cents,
-            offer_price_cents, condition, foil, scryfall_id, set_code, set_name, collector_number,
-            image_small, image_normal, image_small_back, image_normal_back
+            offer_price_cents, market_price_cents, condition, foil, scryfall_id, set_code,
+            set_name, collector_number, image_small, image_normal, image_small_back, image_normal_back
           )
-          VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+          VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
         `,
         [
           accountId,
@@ -1457,6 +1472,7 @@ async function saveCardsRuntime(accountId, entries, saveMode) {
           null,
           entry.askingPriceCents ?? null,
           entry.offerPriceCents ?? null,
+          entry.marketPriceCents ?? null,
           entry.condition ?? null,
           entry.foil ? 1 : 0,
           entry.scryfallId ?? null,
@@ -2499,6 +2515,7 @@ app.post('/api/cards', async (req, res) => {
     let imageSmallBack = null;
     let imageNormalBack = null;
     let foil = false;
+    let marketPriceCents = null;
 
     if (typeof submitted === 'string') {
       cardName = submitted.trim();
@@ -2507,6 +2524,7 @@ app.post('/api/cards', async (req, res) => {
       marketStatusCode = parseMarketStatusFromSubmittedCard(submitted);
       askingPriceCents = parseAskingPriceCentsFromSubmittedCard(submitted);
       offerPriceCents = parseOfferPriceCentsFromSubmittedCard(submitted);
+      marketPriceCents = parseMarketPriceCentsFromSubmittedCard(submitted);
       condition = parseConditionFromSubmittedCard(submitted);
       foil = Boolean(submitted.foil);
       scryfallId = submitted.scryfallId ? String(submitted.scryfallId).trim() : null;
@@ -2533,6 +2551,7 @@ app.post('/api/cards', async (req, res) => {
       askingQuantity: null,
       askingPriceCents,
       offerPriceCents,
+      marketPriceCents,
       condition,
       foil,
       scryfallId,
@@ -2788,6 +2807,76 @@ app.get('/api/users/search', async (req, res) => {
     users: accounts.map((a) => ({ username: a.username, fullName: a.full_name }))
   });
 });
+
+app.get('/api/great-offers', async (_req, res) => {
+  try {
+    const DISCOUNT_THRESHOLD = 0.85; // offer must be ≤ 85% of market (15%+ off)
+    const LIMIT = 24;
+
+    if (!usePostgresRuntime) {
+      const rows = db.prepare(`
+        SELECT
+          mc.id, mc.card_name, mc.offer_price_cents, mc.market_price_cents,
+          mc.condition, mc.foil, mc.scryfall_id, mc.set_code, mc.set_name,
+          mc.collector_number, mc.image_small, mc.image_normal,
+          a.username
+        FROM my_cards mc
+        JOIN accounts a ON a.id = mc.account_id
+        WHERE mc.requesting = 1
+          AND mc.offer_price_cents IS NOT NULL
+          AND mc.market_price_cents IS NOT NULL
+          AND mc.market_price_cents > 0
+          AND mc.offer_price_cents * 100 <= mc.market_price_cents * 85
+        ORDER BY (mc.market_price_cents - mc.offer_price_cents) DESC
+        LIMIT ${LIMIT}
+      `).all();
+      return res.json({ offers: rows.map(normalizeGreatOffer) });
+    }
+
+    const { rows } = await pgQuery(`
+      SELECT
+        mc.id, mc.card_name, mc.offer_price_cents, mc.market_price_cents,
+        mc.condition, mc.foil, mc.scryfall_id, mc.set_code, mc.set_name,
+        mc.collector_number, mc.image_small, mc.image_normal,
+        a.username
+      FROM my_cards mc
+      JOIN accounts a ON a.id = mc.account_id
+      WHERE mc.requesting = 1
+        AND mc.offer_price_cents IS NOT NULL
+        AND mc.market_price_cents IS NOT NULL
+        AND mc.market_price_cents > 0
+        AND mc.offer_price_cents::numeric * 100 <= mc.market_price_cents::numeric * 85
+      ORDER BY (mc.market_price_cents - mc.offer_price_cents) DESC
+      LIMIT $1
+    `, [LIMIT]);
+    return res.json({ offers: rows.map(normalizeGreatOffer) });
+  } catch (err) {
+    console.error('/api/great-offers error', err);
+    return res.status(500).json({ error: 'Could not load great offers.' });
+  }
+});
+
+function normalizeGreatOffer(row) {
+  const offerCents = Number(row.offer_price_cents);
+  const marketCents = Number(row.market_price_cents);
+  const discountPct = marketCents > 0 ? Math.round((1 - offerCents / marketCents) * 100) : 0;
+  return {
+    id: row.id,
+    cardName: row.card_name,
+    offerPriceCents: offerCents,
+    marketPriceCents: marketCents,
+    discountPct,
+    condition: row.condition || null,
+    foil: Boolean(row.foil),
+    scryfallId: row.scryfall_id || null,
+    setCode: row.set_code || null,
+    setName: row.set_name || null,
+    collectorNumber: row.collector_number || null,
+    imageSmall: row.image_small || null,
+    imageNormal: row.image_normal || null,
+    username: row.username,
+  };
+}
 
 app.get('/api/matches', async (req, res) => {
   const credentials = parseBasicAuth(req);

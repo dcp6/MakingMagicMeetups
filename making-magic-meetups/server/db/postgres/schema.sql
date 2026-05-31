@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS my_cards (
   asking_quantity INTEGER,
   asking_price_cents INTEGER,
   offer_price_cents INTEGER,
+  market_price_cents INTEGER,
   condition TEXT,
   foil INTEGER NOT NULL DEFAULT 0,
   scryfall_id TEXT,

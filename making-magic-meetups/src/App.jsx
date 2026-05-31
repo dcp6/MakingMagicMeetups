@@ -178,6 +178,9 @@ export default function App() {
   const [matchesLoading, setMatchesLoading] = useState(false);
   // Price Matches dashboard filter
   const [priceMatchFilter, setPriceMatchFilter] = useState('all');
+  // Great Offers (home page)
+  const [greatOffers, setGreatOffers] = useState([]);
+  const [greatOffersLoading, setGreatOffersLoading] = useState(false);
 
   useEffect(() => {
     function syncRouteFromHash() {
@@ -385,6 +388,17 @@ export default function App() {
     loadMessagesFromApi(loginAuthHeader);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route, loggedInUser, loginAuthHeader, apiBaseUrl]);
+
+  useEffect(() => {
+    if (route !== 'home') return;
+    setGreatOffersLoading(true);
+    fetch(`${apiBaseUrl}/api/great-offers`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (data?.offers) setGreatOffers(data.offers); })
+      .catch(() => {})
+      .finally(() => setGreatOffersLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route, apiBaseUrl]);
 
   function buildCityLabel(r) {
     const addr = r.address || {};
@@ -1124,6 +1138,8 @@ export default function App() {
           card.offerPriceCents === null || card.offerPriceCents === undefined
             ? null
             : Number(card.offerPriceCents);
+        const marketPriceCents =
+          card.unitUsd != null ? Math.round(card.unitUsd * 100) : null;
         const quantity = 1; // Each row represents one individual card
         const marketStatus = normalizeMarketStatus(
           card.marketStatus ?? marketStatusFromLegacyRequesting(Boolean(card.requesting))
@@ -1137,6 +1153,7 @@ export default function App() {
           askingQuantity: null,
           askingPriceCents,
           offerPriceCents,
+          marketPriceCents,
           condition: card.condition || null,
           foil: Boolean(card.foil),
           scryfallId: card.scryfallId || null,
@@ -3511,6 +3528,68 @@ export default function App() {
             </article>
           ))}
         </section>
+
+        {/* ── Great Offers ── */}
+        {(greatOffersLoading || greatOffers.length > 0) ? (
+          <section className="great-offers-section">
+            <div className="great-offers-header">
+              <h2>🔥 Great Offers!</h2>
+              <span className="great-offers-subtitle">
+                Cards priced 15%+ below market — trade away!
+              </span>
+            </div>
+            {greatOffersLoading ? (
+              <p className="notice subtle">Loading offers…</p>
+            ) : (
+              <div className="great-offers-grid">
+                {greatOffers.map((offer) => {
+                  const offerDollars = (offer.offerPriceCents / 100).toFixed(2);
+                  const marketDollars = (offer.marketPriceCents / 100).toFixed(2);
+                  return (
+                    <div key={offer.id} className="great-offer-card">
+                      <div className="great-offer-img-wrap">
+                        {offer.imageSmall ? (
+                          <img
+                            className="great-offer-img"
+                            src={offer.imageSmall}
+                            alt={offer.cardName}
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="great-offer-img-placeholder" />
+                        )}
+                        <span className="great-offer-badge">−{offer.discountPct}%</span>
+                      </div>
+                      <div className="great-offer-info">
+                        <p className="great-offer-name">
+                          {offer.cardName}
+                          {offer.foil ? <span className="foil-label"> ✦</span> : null}
+                          {offer.condition ? (
+                            <span className="patch-condition"> {offer.condition.toUpperCase()}</span>
+                          ) : null}
+                        </p>
+                        <p className="great-offer-prices">
+                          <span className="great-offer-price">${offerDollars}</span>
+                          <span className="great-offer-market">mkt ${marketDollars}</span>
+                        </p>
+                        <p className="great-offer-seller">
+                          by{' '}
+                          {loggedInUser ? (
+                            <a href={`#/messages?compose=${offer.username}`} className="great-offer-user">
+                              {offer.username}
+                            </a>
+                          ) : (
+                            <a href="#/login" className="great-offer-user">{offer.username}</a>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        ) : null}
 
         <section className="join" id="join">
           <h2>Get the weekly meetup drop</h2>
