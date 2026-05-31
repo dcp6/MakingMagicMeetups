@@ -1763,12 +1763,12 @@ h1 {
   }
 }
 
-/* ── Price Patches (dashboard) ── */
-.price-patches-section {
+/* ── Price Matches (dashboard) ── */
+.price-matches-section {
   margin-top: 2rem;
 }
 
-.price-patches-summary {
+.price-matches-summary {
   font-size: 0.85rem;
   color: var(--text-700);
   white-space: nowrap;
@@ -1779,13 +1779,13 @@ h1 {
   font-weight: 600;
 }
 
-.price-patches-hint {
+.price-matches-hint {
   font-size: 0.8rem;
   color: var(--text-700);
   margin: 0.35rem 0 0.75rem;
 }
 
-.price-patches-table td {
+.price-matches-table td {
   vertical-align: middle;
 }
 
@@ -1830,18 +1830,18 @@ h1 {
 .patch-row--high { background: #f0fdf4; }
 .patch-row--low  { background: #fff5f5; }
 
-.price-patches-footer {
+.price-matches-footer {
   margin-top: 0.65rem;
   font-size: 0.82rem;
   color: var(--text-700);
 }
 
-.price-patches-footer a {
+.price-matches-footer a {
   color: var(--mint-400);
   text-decoration: none;
   font-weight: 600;
 }
 
-.price-patches-footer a:hover {
+.price-matches-footer a:hover {
   text-decoration: underline;
 }

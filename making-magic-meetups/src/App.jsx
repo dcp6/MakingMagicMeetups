@@ -2355,8 +2355,8 @@ export default function App() {
             {loggedInUser?.role === 'user' ? (() => {
               if (isCardPriceLoading) {
                 return (
-                  <div className="price-patches-section">
-                    <h2>Price Patches</h2>
+                  <div className="price-matches-section">
+                    <h2>Price Matches</h2>
                     <p className="notice subtle">Loading card prices…</p>
                   </div>
                 );
@@ -2389,18 +2389,18 @@ export default function App() {
               const flagged = rows.filter((r) => r.pct != null && Math.abs(r.pct) >= 0.15).length;
 
               return (
-                <div className="price-patches-section">
+                <div className="price-matches-section">
                   <div className="section-header-row">
-                    <h2>Price Patches</h2>
-                    <span className="price-patches-summary">
+                    <h2>Price Matches</h2>
+                    <span className="price-matches-summary">
                       {uploadedCards.length} card{uploadedCards.length !== 1 ? 's' : ''} · collection ~${totalMarket.toFixed(2)}
                       {flagged > 0 ? <span className="patch-flag-count"> · {flagged} need{flagged === 1 ? 's' : ''} attention</span> : null}
                     </span>
                   </div>
-                  <p className="price-patches-hint">
+                  <p className="price-matches-hint">
                     Your listed price vs. current Scryfall market. <strong>Green</strong> = priced above market · <strong>Red</strong> = below market by 15%+.
                   </p>
-                  <table className="price-table price-patches-table">
+                  <table className="price-table price-matches-table">
                     <thead>
                       <tr>
                         <th>Card</th>
@@ -2460,7 +2460,7 @@ export default function App() {
                       })}
                     </tbody>
                   </table>
-                  <p className="price-patches-footer">
+                  <p className="price-matches-footer">
                     <a href="#/my-cards">Update prices on My Cards →</a>
                   </p>
                 </div>
