@@ -1208,7 +1208,7 @@ export default function App() {
 
   function parseCardEntries(text) {
     const lines = text.split(/[\n,]/).map((line) => line.trim()).filter(Boolean);
-    const entryMap = new Map();
+    const result = [];
 
     for (const line of lines) {
       let quantity = 1;
@@ -1218,9 +1218,6 @@ export default function App() {
       name = name.replace(/\*[A-Za-z]+\*/g, '').trim();
 
       // Quantity patterns:
-      // - "2 Lightning Bolt" / "2x Lightning Bolt"
-      // - "Lightning Bolt x2"
-      // - "Lightning Bolt (2)"  ← only when parens contain pure digits
       const leading = name.match(/^(\d+)\s*x?\s+(.+)$/i);
       const trailingX = name.match(/^(.+?)\s+x\s*(\d+)$/i);
       const trailingParen = name.match(/^(.+?)\s*\(\s*(\d+)\s*\)\s*$/);
@@ -1237,24 +1234,15 @@ export default function App() {
       }
 
       // ── Version extraction ────────────────────────────────────────────
-      // Supported formats (after quantity stripping):
-      //   Lightning Bolt [M10]           bracket set code
-      //   Lightning Bolt [M10] #15       bracket + hash collector number
-      //   Lightning Bolt [M10] 15        bracket + bare collector number
-      //   Lightning Bolt (M10) 15        MTGO/Moxfield export format
-      //   Lightning Bolt (M10) #15       paren + hash collector number
-      //   Lightning Bolt (M10)           paren set code only
       let setCode = null;
       let collectorNumber = null;
 
-      // Bracket notation: [SET]
       const bracketMatch = name.match(/^(.*?)\s*\[([A-Za-z0-9]{2,6})\]\s*(.*)$/);
       if (bracketMatch) {
         setCode = bracketMatch[2].toUpperCase();
         name = (bracketMatch[1] + ' ' + bracketMatch[3]).trim();
       }
 
-      // Paren notation — only when content starts with a letter (not a qty paren)
       if (!setCode) {
         const parenMatch = name.match(/^(.*?)\s*\(([A-Za-z][A-Za-z0-9]{1,5})\)\s*(.*)$/);
         if (parenMatch) {
@@ -1263,13 +1251,11 @@ export default function App() {
         }
       }
 
-      // Collector number: explicit #15 / #15a
       const hashMatch = name.match(/^(.*?)\s*#(\d+[a-z]?)\s*(.*)$/i);
       if (hashMatch) {
         collectorNumber = hashMatch[2];
         name = (hashMatch[1] + ' ' + hashMatch[3]).trim();
       } else if (setCode) {
-        // MTGO format: trailing bare integer after set extraction = collector number
         const trailingNum = name.match(/^(.*\S)\s+(\d+[a-z]?)$/i);
         if (trailingNum) {
           collectorNumber = trailingNum[2];
@@ -1287,17 +1273,13 @@ export default function App() {
         quantity = 1;
       }
 
-      // Dedup key includes version so same card in different sets stays separate
-      const key = `${name.toLowerCase()}|${(setCode || '').toLowerCase()}|${(collectorNumber || '').toLowerCase()}`;
-      const existing = entryMap.get(key);
-      if (existing) {
-        existing.quantity += quantity;
-      } else {
-        entryMap.set(key, { cardName: name, quantity, setCode, collectorNumber });
+      // Each copy is its own individual card entry (no grouping by name)
+      for (let i = 0; i < quantity; i++) {
+        result.push({ cardName: name, quantity: 1, setCode, collectorNumber });
       }
     }
 
-    return Array.from(entryMap.values());
+    return result;
   }
 
   function expandEntries(entries) {
@@ -1387,17 +1369,7 @@ export default function App() {
           card.offerPriceCents === null || card.offerPriceCents === undefined
             ? null
             : Number(card.offerPriceCents);
-        const parsedQuantity = Number(card.quantity);
-        const quantity =
-          Number.isFinite(parsedQuantity) && parsedQuantity >= 0 ? Math.floor(parsedQuantity) : 1;
-        const parsedAskingQuantity =
-          card.askingQuantity === null || card.askingQuantity === undefined
-            ? null
-            : Number(card.askingQuantity);
-        const askingQuantity =
-          parsedAskingQuantity === null || !Number.isFinite(parsedAskingQuantity)
-            ? null
-            : Math.max(0, Math.floor(parsedAskingQuantity));
+        const quantity = 1; // Each row represents one individual card
         const marketStatus = normalizeMarketStatus(
           card.marketStatus ?? marketStatusFromLegacyRequesting(Boolean(card.requesting))
         );
@@ -1407,7 +1379,7 @@ export default function App() {
           quantity,
           marketStatus,
           requesting: marketStatus === 'requesting',
-          askingQuantity,
+          askingQuantity: null,
           askingPriceCents,
           offerPriceCents,
           condition: card.condition || null,
@@ -1457,6 +1429,7 @@ export default function App() {
 
       return {
         ...priced,
+        id: entries[index]?.id ?? null, // DB row id — required for delete-by-id
         tcgLow,           // condition-adjusted price display (overrides NM from Scryfall)
         nmUsd,            // raw NM price number, kept for live recalc when condition changes
         nmPriceDisplay,   // raw NM price string, e.g. "$3.26", for reference display
@@ -1541,6 +1514,7 @@ export default function App() {
     const normalizedEntries =
       entries.length > 0
         ? entries.map((entry) => ({
+            id: entry.id != null ? Number(entry.id) : null,
             cardName: String(entry.cardName || entry.card_name || '').trim(),
             quantity:
               Number.isFinite(Number(entry.quantity)) && Number(entry.quantity) >= 0
@@ -2125,11 +2099,12 @@ export default function App() {
     }
 
     const cardName = String(card?.resolvedName || card?.inputName || '').trim();
-    if (!cardName) {
+    const cardId = card?.id;
+    if (cardId == null) {
+      setCardUploadFeedback('Cannot delete: card has no id. Try reloading your card list.');
       return;
     }
-
-    const key = String(card?.scryfallId || cardName);
+    const key = String(cardId);
     if (deletingCardKey === key) {
       return;
     }
@@ -2147,7 +2122,7 @@ export default function App() {
           'Content-Type': 'application/json',
           Authorization: loginAuthHeader
         },
-        body: JSON.stringify({ cardName })
+        body: JSON.stringify({ id: cardId })
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -2156,10 +2131,7 @@ export default function App() {
       }
 
       setUploadedCards((previous) => {
-        const next = previous.filter((entry) => {
-          const entryName = String(entry.resolvedName || entry.inputName || '').trim();
-          return entryName.toLowerCase() !== cardName.toLowerCase();
-        });
+        const next = previous.filter((entry) => entry.id !== cardId);
         setCardCostTotal(recomputeCostTotal(next));
         return next;
       });
@@ -3014,8 +2986,7 @@ export default function App() {
                             <th>Pic</th>
                             <th>Card</th>
                             <th>TCG Price</th>
-                            <th># Owned</th>
-                            <th># Wanted</th>
+                            <th>Status</th>
                             <th>Condition</th>
                             <th>Ask Price</th>
                             <th>Offer Price</th>
@@ -3024,14 +2995,10 @@ export default function App() {
                         </thead>
                         <tbody>
                           {savedPairs.map(({ card, index }) => {
-                            const wantedQty =
-                              card.askingQuantity === null || card.askingQuantity === undefined
-                                ? 0
-                                : card.askingQuantity;
-                            const cardKey = String(
+                            const cardKey = String(card.id != null ? card.id : (
                               card.scryfallId ||
                                 String(card.resolvedName || card.inputName || '').trim()
-                            );
+                            ));
                             return (
                               <tr key={`${cardKey}-${index}`}>
                                 <td>
@@ -3076,26 +3043,16 @@ export default function App() {
                                   ) : null}
                                 </td>
                                 <td>
-                                  <input
-                                    className="qty-input"
-                                    type="number"
-                                    min={0}
-                                    step={1}
-                                    value={card.quantity}
-                                    onChange={(e) => handleQuantityChange(index, e.target.value)}
-                                  />
-                                </td>
-                                <td>
-                                  <input
-                                    className="qty-input"
-                                    type="number"
-                                    min={0}
-                                    step={1}
-                                    value={wantedQty}
-                                    onChange={(e) =>
-                                      handleRequestingAskingQuantityChange(index, e.target.value)
-                                    }
-                                  />
+                                  <select
+                                    className="market-status-select"
+                                    value={card.marketStatus || 'have'}
+                                    onChange={(e) => handleMarketStatusChange(index, e.target.value)}
+                                    aria-label={`Status for ${card.resolvedName || card.inputName}`}
+                                  >
+                                    <option value="have">Owned</option>
+                                    <option value="requesting">Wants</option>
+                                    <option value="offering">Offering</option>
+                                  </select>
                                 </td>
                                 <td>
                                   <select

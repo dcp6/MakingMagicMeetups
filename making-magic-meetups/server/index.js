@@ -441,6 +441,68 @@ db.exec(`
   WHERE requesting IS NULL
 `);
 
+// Migration: drop UNIQUE(account_id, card_name) so each row is one individual card.
+{
+  const mcSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='my_cards'").get();
+  if (mcSchema?.sql?.includes('UNIQUE (account_id, card_name)')) {
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      CREATE TABLE my_cards_individual (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_id INTEGER NOT NULL,
+        card_name TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        requesting INTEGER NOT NULL DEFAULT 0,
+        asking_quantity INTEGER,
+        asking_price_cents INTEGER,
+        offer_price_cents INTEGER,
+        condition TEXT,
+        scryfall_id TEXT,
+        set_code TEXT,
+        set_name TEXT,
+        collector_number TEXT,
+        image_small TEXT,
+        image_normal TEXT,
+        image_small_back TEXT,
+        image_normal_back TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `);
+    const existingRows = db.prepare('SELECT * FROM my_cards').all();
+    const insertIndividual = db.prepare(`
+      INSERT INTO my_cards_individual
+        (account_id, card_name, quantity, requesting, asking_quantity, asking_price_cents,
+         offer_price_cents, condition, scryfall_id, set_code, set_name, collector_number,
+         image_small, image_normal, image_small_back, image_normal_back)
+      VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const expandRows = db.transaction(() => {
+      for (const card of existingRows) {
+        const copies = Math.max(1, card.quantity || 1);
+        for (let i = 0; i < copies; i++) {
+          insertIndividual.run(
+            card.account_id, card.card_name, card.requesting,
+            card.asking_quantity, card.asking_price_cents, card.offer_price_cents,
+            card.condition, card.scryfall_id, card.set_code, card.set_name,
+            card.collector_number, card.image_small, card.image_normal,
+            card.image_small_back, card.image_normal_back
+          );
+        }
+      }
+    });
+    expandRows();
+    db.exec(`
+      DROP TABLE my_cards;
+      ALTER TABLE my_cards_individual RENAME TO my_cards;
+      CREATE INDEX IF NOT EXISTS my_cards_account_id_idx ON my_cards (account_id);
+      PRAGMA foreign_keys = ON;
+    `);
+    console.log('[migration] Removed UNIQUE(account_id, card_name) — my_cards now stores individual card instances.');
+  }
+}
+
 db.exec(`
   CREATE INDEX IF NOT EXISTS my_cards_account_id_idx
   ON my_cards (account_id)
@@ -481,47 +543,24 @@ db.exec(`
   ON CONFLICT(account_id, card_name) DO NOTHING
 `);
 
-// One-time migration: move existing saved lists into "my_cards" if present.
-db.exec(`
-  INSERT INTO my_cards (
-    account_id,
-    card_name,
-    quantity,
-    asking_quantity,
-    asking_price_cents,
-    scryfall_id,
-    set_code,
-    set_name,
-    collector_number,
-    image_small,
-    image_normal
-  )
-  SELECT
-    account_id,
-    card_name,
-    quantity,
-    asking_quantity,
-    asking_price_cents,
-    scryfall_id,
-    set_code,
-    set_name,
-    collector_number,
-    image_small,
-    image_normal
-  FROM account_card_items
-  WHERE 1 = 1
-  ON CONFLICT(account_id, card_name) DO UPDATE SET
-    quantity = excluded.quantity,
-    asking_quantity = excluded.asking_quantity,
-    asking_price_cents = excluded.asking_price_cents,
-    scryfall_id = excluded.scryfall_id,
-    set_code = excluded.set_code,
-    set_name = excluded.set_name,
-    collector_number = excluded.collector_number,
-    image_small = excluded.image_small,
-    image_normal = excluded.image_normal,
-    updated_at = CURRENT_TIMESTAMP
-`);
+// One-time migration: copy legacy account_card_items rows into my_cards.
+// Only runs if my_cards is empty and account_card_items has rows (new installs skip this).
+{
+  const myCardsEmpty = db.prepare('SELECT 1 FROM my_cards LIMIT 1').get() == null;
+  const legacyHasRows = db.prepare('SELECT 1 FROM account_card_items LIMIT 1').get() != null;
+  if (myCardsEmpty && legacyHasRows) {
+    db.exec(`
+      INSERT INTO my_cards (
+        account_id, card_name, quantity, asking_quantity, asking_price_cents,
+        scryfall_id, set_code, set_name, collector_number, image_small, image_normal
+      )
+      SELECT
+        account_id, card_name, quantity, asking_quantity, asking_price_cents,
+        scryfall_id, set_code, set_name, collector_number, image_small, image_normal
+      FROM account_card_items
+    `);
+  }
+}
 
 // Messages table
 db.exec(`
@@ -665,184 +704,30 @@ const listAccountCards = db.prepare(`
   ORDER BY card_name COLLATE NOCASE ASC
 `);
 
-const clearMyCards = db.prepare(`
-  DELETE FROM my_cards
-  WHERE account_id = ?
-`);
+const deleteAllMyCards = db.prepare(`DELETE FROM my_cards WHERE account_id = ?`);
 
-const upsertMyCardReplace = db.prepare(`
+const insertMyCard = db.prepare(`
   INSERT INTO my_cards (
-    account_id,
-    card_name,
-    quantity,
-    requesting,
-    asking_quantity,
-    asking_price_cents,
-    offer_price_cents,
-    condition,
-    scryfall_id,
-    set_code,
-    set_name,
-    collector_number,
-    image_small,
-    image_normal,
-    image_small_back,
-    image_normal_back
+    account_id, card_name, quantity, requesting, asking_quantity, asking_price_cents,
+    offer_price_cents, condition, scryfall_id, set_code, set_name, collector_number,
+    image_small, image_normal, image_small_back, image_normal_back
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  ON CONFLICT(account_id, card_name) DO UPDATE SET
-    quantity = excluded.quantity,
-    requesting = excluded.requesting,
-    asking_quantity = excluded.asking_quantity,
-    asking_price_cents = excluded.asking_price_cents,
-    offer_price_cents = excluded.offer_price_cents,
-    condition = excluded.condition,
-    scryfall_id = excluded.scryfall_id,
-    set_code = excluded.set_code,
-    set_name = excluded.set_name,
-    collector_number = excluded.collector_number,
-    image_small = excluded.image_small,
-    image_normal = excluded.image_normal,
-    image_small_back = excluded.image_small_back,
-    image_normal_back = excluded.image_normal_back,
-    updated_at = CURRENT_TIMESTAMP
-`);
-
-const upsertMyCardAdd = db.prepare(`
-  INSERT INTO my_cards (
-    account_id,
-    card_name,
-    quantity,
-    requesting,
-    asking_quantity,
-    asking_price_cents,
-    offer_price_cents,
-    condition,
-    scryfall_id,
-    set_code,
-    set_name,
-    collector_number,
-    image_small,
-    image_normal,
-    image_small_back,
-    image_normal_back
-  )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  ON CONFLICT(account_id, card_name) DO UPDATE SET
-    quantity = my_cards.quantity + excluded.quantity,
-    requesting = MAX(my_cards.requesting, excluded.requesting),
-    asking_quantity =
-      COALESCE(my_cards.asking_quantity, my_cards.quantity) +
-      COALESCE(excluded.asking_quantity, excluded.quantity),
-    asking_price_cents = COALESCE(excluded.asking_price_cents, my_cards.asking_price_cents),
-    offer_price_cents = COALESCE(excluded.offer_price_cents, my_cards.offer_price_cents),
-    condition = COALESCE(excluded.condition, my_cards.condition),
-    scryfall_id = COALESCE(excluded.scryfall_id, my_cards.scryfall_id),
-    set_code = COALESCE(excluded.set_code, my_cards.set_code),
-    set_name = COALESCE(excluded.set_name, my_cards.set_name),
-    collector_number = COALESCE(excluded.collector_number, my_cards.collector_number),
-    image_small = COALESCE(excluded.image_small, my_cards.image_small),
-    image_normal = COALESCE(excluded.image_normal, my_cards.image_normal),
-    image_small_back = COALESCE(excluded.image_small_back, my_cards.image_small_back),
-    image_normal_back = COALESCE(excluded.image_normal_back, my_cards.image_normal_back),
-    updated_at = CURRENT_TIMESTAMP
+  VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const listMyCards = db.prepare(`
   SELECT
-    card_name,
-    quantity,
-    requesting,
-    asking_quantity,
-    asking_price_cents,
-    offer_price_cents,
-    condition,
-    scryfall_id,
-    set_code,
-    set_name,
-    collector_number,
-    image_small,
-    image_normal,
-    image_small_back,
-    image_normal_back
+    id, card_name, quantity, requesting, asking_quantity, asking_price_cents, offer_price_cents,
+    condition, scryfall_id, set_code, set_name, collector_number,
+    image_small, image_normal, image_small_back, image_normal_back
   FROM my_cards
   WHERE account_id = ?
-  ORDER BY card_name COLLATE NOCASE ASC
+  ORDER BY id ASC
 `);
 
-const deleteMyCardByName = db.prepare(`
-  DELETE FROM my_cards
-  WHERE account_id = ? AND LOWER(card_name) = LOWER(?)
+const deleteMyCardById = db.prepare(`
+  DELETE FROM my_cards WHERE id = ? AND account_id = ?
 `);
-
-function sqlIdentityKey(alias) {
-  return `CASE
-    WHEN NULLIF(TRIM(${alias}.scryfall_id), '') IS NOT NULL THEN 'id:' || LOWER(TRIM(${alias}.scryfall_id))
-    ELSE 'name:' || LOWER(TRIM(${alias}.card_name))
-  END`;
-}
-
-const srcIdentityKey = sqlIdentityKey('src');
-const rowIdentityKey = sqlIdentityKey('my_cards');
-
-const consolidateMyCardsIdentityKeepRows = db.prepare(`
-  UPDATE my_cards
-  SET
-    quantity = (
-      SELECT SUM(src.quantity)
-      FROM my_cards src
-      WHERE src.account_id = my_cards.account_id
-        AND ${srcIdentityKey} = ${rowIdentityKey}
-    ),
-    requesting = (
-      SELECT MAX(src.requesting)
-      FROM my_cards src
-      WHERE src.account_id = my_cards.account_id
-        AND ${srcIdentityKey} = ${rowIdentityKey}
-    ),
-    asking_quantity = (
-      SELECT SUM(COALESCE(src.asking_quantity, src.quantity))
-      FROM my_cards src
-      WHERE src.account_id = my_cards.account_id
-        AND ${srcIdentityKey} = ${rowIdentityKey}
-    ),
-    asking_price_cents = COALESCE(
-      (
-        SELECT src.asking_price_cents
-        FROM my_cards src
-        WHERE src.account_id = my_cards.account_id
-          AND ${srcIdentityKey} = ${rowIdentityKey}
-          AND src.asking_price_cents IS NOT NULL
-        ORDER BY src.updated_at DESC, src.id DESC
-        LIMIT 1
-      ),
-      my_cards.asking_price_cents
-    ),
-    updated_at = CURRENT_TIMESTAMP
-  WHERE my_cards.account_id = ?
-    AND my_cards.id = (
-      SELECT MIN(src.id)
-      FROM my_cards src
-      WHERE src.account_id = my_cards.account_id
-        AND ${srcIdentityKey} = ${rowIdentityKey}
-    )
-`);
-
-const consolidateMyCardsIdentityDeleteDuplicates = db.prepare(`
-  DELETE FROM my_cards
-  WHERE account_id = ?
-    AND id NOT IN (
-      SELECT MIN(src.id)
-      FROM my_cards src
-      WHERE src.account_id = ?
-      GROUP BY ${srcIdentityKey}
-    )
-`);
-
-const consolidateMyCardsByIdentity = db.transaction((accountId) => {
-  consolidateMyCardsIdentityKeepRows.run(accountId);
-  consolidateMyCardsIdentityDeleteDuplicates.run(accountId, accountId);
-});
 
 function parseAskingPriceCents(value) {
   if (value === null || value === undefined || value === '') {
@@ -1400,6 +1285,10 @@ async function validatePostgresRuntimeOrExit() {
     await pgQuery(`ALTER TABLE my_cards ADD COLUMN IF NOT EXISTS offer_price_cents INTEGER`);
     await pgQuery(`ALTER TABLE my_cards ADD COLUMN IF NOT EXISTS condition TEXT`);
 
+    // Drop the (account_id, card_name) unique constraint so multiple rows per card are allowed.
+    // The constraint name may vary; try both the default Postgres name and an explicit one.
+    await pgQuery(`ALTER TABLE my_cards DROP CONSTRAINT IF EXISTS my_cards_account_id_card_name_key`);
+
     // Messages table (created if not present; harmless on existing schemas).
     await pgQuery(`
       CREATE TABLE IF NOT EXISTS messages (
@@ -1464,43 +1353,40 @@ async function listMyCardsRuntime(accountId) {
   const { rows } = await pgQuery(
     `
       SELECT
-        card_name, quantity, requesting, asking_quantity, asking_price_cents, offer_price_cents,
+        id, card_name, quantity, requesting, asking_quantity, asking_price_cents, offer_price_cents,
         condition, scryfall_id, set_code, set_name, collector_number, image_small, image_normal,
         image_small_back, image_normal_back
       FROM my_cards
       WHERE account_id = $1
-      ORDER BY LOWER(card_name) ASC
+      ORDER BY id ASC
     `,
     [accountId]
   );
   return rows;
 }
 
-async function deleteMyCardByNameRuntime(accountId, cardName) {
+async function deleteMyCardByIdRuntime(accountId, cardId) {
   if (!usePostgresRuntime) {
-    return deleteMyCardByName.run(accountId, cardName);
+    return deleteMyCardById.run(cardId, accountId);
   }
   return pgQuery(
-    `DELETE FROM my_cards WHERE account_id = $1 AND LOWER(card_name) = LOWER($2)`,
-    [accountId, cardName]
+    `DELETE FROM my_cards WHERE id = $1 AND account_id = $2`,
+    [cardId, accountId]
   );
 }
 
 async function saveCardsRuntime(accountId, entries, saveMode) {
   if (!usePostgresRuntime) {
     const saveCards = db.transaction((id, cardEntries) => {
+      if (saveMode === 'replace') {
+        deleteAllMyCards.run(id);
+      }
       for (const entry of cardEntries) {
-        const normalizedAskQty =
-          entry.askingQuantity === null || entry.askingQuantity === undefined
-            ? entry.quantity
-            : Math.max(0, Math.floor(Number(entry.askingQuantity)));
-        const upsert = saveMode === 'add' ? upsertMyCardAdd : upsertMyCardReplace;
-        upsert.run(
+        insertMyCard.run(
           id,
           entry.cardName,
-          entry.quantity,
           entry.marketStatusCode ?? 0,
-          normalizedAskQty,
+          null,
           entry.askingPriceCents ?? null,
           entry.offerPriceCents ?? null,
           entry.condition ?? null,
@@ -1514,189 +1400,44 @@ async function saveCardsRuntime(accountId, entries, saveMode) {
           entry.imageNormalBack ?? null
         );
       }
-      consolidateMyCardsByIdentity(id);
     });
     saveCards(accountId, entries);
     return;
   }
 
   await withPgTransaction(async (client) => {
-    for (const entry of entries) {
-      const normalizedAskQty =
-        entry.askingQuantity === null || entry.askingQuantity === undefined
-          ? entry.quantity
-          : Math.max(0, Math.floor(Number(entry.askingQuantity)));
-
-      if (saveMode === 'add') {
-        await client.query(
-          `
-            INSERT INTO my_cards (
-              account_id, card_name, quantity, requesting, asking_quantity, asking_price_cents,
-              offer_price_cents, condition, scryfall_id, set_code, set_name, collector_number,
-              image_small, image_normal, image_small_back, image_normal_back
-            )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-            ON CONFLICT(account_id, card_name) DO UPDATE SET
-              quantity = my_cards.quantity + EXCLUDED.quantity,
-              requesting = GREATEST(my_cards.requesting, EXCLUDED.requesting),
-              asking_quantity = COALESCE(my_cards.asking_quantity, my_cards.quantity) +
-                COALESCE(EXCLUDED.asking_quantity, EXCLUDED.quantity),
-              asking_price_cents = COALESCE(EXCLUDED.asking_price_cents, my_cards.asking_price_cents),
-              offer_price_cents = COALESCE(EXCLUDED.offer_price_cents, my_cards.offer_price_cents),
-              condition = COALESCE(EXCLUDED.condition, my_cards.condition),
-              scryfall_id = COALESCE(EXCLUDED.scryfall_id, my_cards.scryfall_id),
-              set_code = COALESCE(EXCLUDED.set_code, my_cards.set_code),
-              set_name = COALESCE(EXCLUDED.set_name, my_cards.set_name),
-              collector_number = COALESCE(EXCLUDED.collector_number, my_cards.collector_number),
-              image_small = COALESCE(EXCLUDED.image_small, my_cards.image_small),
-              image_normal = COALESCE(EXCLUDED.image_normal, my_cards.image_normal),
-              image_small_back = COALESCE(EXCLUDED.image_small_back, my_cards.image_small_back),
-              image_normal_back = COALESCE(EXCLUDED.image_normal_back, my_cards.image_normal_back),
-              updated_at = NOW()
-          `,
-          [
-            accountId,
-            entry.cardName,
-            entry.quantity,
-            entry.marketStatusCode ?? 0,
-            normalizedAskQty,
-            entry.askingPriceCents ?? null,
-            entry.offerPriceCents ?? null,
-            entry.condition ?? null,
-            entry.scryfallId ?? null,
-            entry.setCode ?? null,
-            entry.setName ?? null,
-            entry.collectorNumber ?? null,
-            entry.imageSmall ?? null,
-            entry.imageNormal ?? null,
-            entry.imageSmallBack ?? null,
-            entry.imageNormalBack ?? null
-          ]
-        );
-      } else {
-        await client.query(
-          `
-            INSERT INTO my_cards (
-              account_id, card_name, quantity, requesting, asking_quantity, asking_price_cents,
-              offer_price_cents, condition, scryfall_id, set_code, set_name, collector_number,
-              image_small, image_normal, image_small_back, image_normal_back
-            )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-            ON CONFLICT(account_id, card_name) DO UPDATE SET
-              quantity = EXCLUDED.quantity,
-              requesting = EXCLUDED.requesting,
-              asking_quantity = EXCLUDED.asking_quantity,
-              asking_price_cents = EXCLUDED.asking_price_cents,
-              offer_price_cents = EXCLUDED.offer_price_cents,
-              condition = EXCLUDED.condition,
-              scryfall_id = EXCLUDED.scryfall_id,
-              set_code = EXCLUDED.set_code,
-              set_name = EXCLUDED.set_name,
-              collector_number = EXCLUDED.collector_number,
-              image_small = EXCLUDED.image_small,
-              image_normal = EXCLUDED.image_normal,
-              image_small_back = EXCLUDED.image_small_back,
-              image_normal_back = EXCLUDED.image_normal_back,
-              updated_at = NOW()
-          `,
-          [
-            accountId,
-            entry.cardName,
-            entry.quantity,
-            entry.marketStatusCode ?? 0,
-            normalizedAskQty,
-            entry.askingPriceCents ?? null,
-            entry.offerPriceCents ?? null,
-            entry.condition ?? null,
-            entry.scryfallId ?? null,
-            entry.setCode ?? null,
-            entry.setName ?? null,
-            entry.collectorNumber ?? null,
-            entry.imageSmall ?? null,
-            entry.imageNormal ?? null,
-            entry.imageSmallBack ?? null,
-            entry.imageNormalBack ?? null
-          ]
-        );
-      }
+    if (saveMode === 'replace') {
+      await client.query(`DELETE FROM my_cards WHERE account_id = $1`, [accountId]);
     }
-
-    // Merge duplicate identities (same scryfall id, else same normalized name) and keep one row per identity.
-    await client.query(
-      `
-        WITH grouped AS (
-          SELECT
-            account_id,
-            CASE
-              WHEN NULLIF(TRIM(scryfall_id), '') IS NOT NULL THEN 'id:' || LOWER(TRIM(scryfall_id))
-              ELSE 'name:' || LOWER(TRIM(card_name))
-            END AS identity_key,
-            MIN(id) AS keep_id,
-            SUM(quantity) AS total_quantity,
-            MAX(requesting) AS max_requesting,
-            SUM(COALESCE(asking_quantity, quantity)) AS total_asking_quantity
-          FROM my_cards
-          WHERE account_id = $1
-          GROUP BY account_id, identity_key
-        ),
-        picked_price AS (
-          SELECT DISTINCT ON (
-            CASE
-              WHEN NULLIF(TRIM(scryfall_id), '') IS NOT NULL THEN 'id:' || LOWER(TRIM(scryfall_id))
-              ELSE 'name:' || LOWER(TRIM(card_name))
-            END
+    for (const entry of entries) {
+      await client.query(
+        `
+          INSERT INTO my_cards (
+            account_id, card_name, quantity, requesting, asking_quantity, asking_price_cents,
+            offer_price_cents, condition, scryfall_id, set_code, set_name, collector_number,
+            image_small, image_normal, image_small_back, image_normal_back
           )
-            CASE
-              WHEN NULLIF(TRIM(scryfall_id), '') IS NOT NULL THEN 'id:' || LOWER(TRIM(scryfall_id))
-              ELSE 'name:' || LOWER(TRIM(card_name))
-            END AS identity_key,
-            asking_price_cents
-          FROM my_cards
-          WHERE account_id = $1
-            AND asking_price_cents IS NOT NULL
-          ORDER BY
-            CASE
-              WHEN NULLIF(TRIM(scryfall_id), '') IS NOT NULL THEN 'id:' || LOWER(TRIM(scryfall_id))
-              ELSE 'name:' || LOWER(TRIM(card_name))
-            END,
-            updated_at DESC,
-            id DESC
-        )
-        UPDATE my_cards m
-        SET
-          quantity = g.total_quantity,
-          requesting = g.max_requesting,
-          asking_quantity = g.total_asking_quantity,
-          asking_price_cents = COALESCE(p.asking_price_cents, m.asking_price_cents),
-          updated_at = NOW()
-        FROM grouped g
-        LEFT JOIN picked_price p ON p.identity_key = g.identity_key
-        WHERE m.id = g.keep_id
-      `,
-      [accountId]
-    );
-
-    await client.query(
-      `
-        DELETE FROM my_cards m
-        USING (
-          SELECT
-            id,
-            MIN(id) OVER (
-              PARTITION BY account_id,
-              CASE
-                WHEN NULLIF(TRIM(scryfall_id), '') IS NOT NULL THEN 'id:' || LOWER(TRIM(scryfall_id))
-                ELSE 'name:' || LOWER(TRIM(card_name))
-              END
-            ) AS keep_id
-          FROM my_cards
-          WHERE account_id = $1
-        ) x
-        WHERE m.id = x.id
-          AND x.id <> x.keep_id
-      `,
-      [accountId]
-    );
+          VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        `,
+        [
+          accountId,
+          entry.cardName,
+          entry.marketStatusCode ?? 0,
+          null,
+          entry.askingPriceCents ?? null,
+          entry.offerPriceCents ?? null,
+          entry.condition ?? null,
+          entry.scryfallId ?? null,
+          entry.setCode ?? null,
+          entry.setName ?? null,
+          entry.collectorNumber ?? null,
+          entry.imageSmall ?? null,
+          entry.imageNormal ?? null,
+          entry.imageSmallBack ?? null,
+          entry.imageNormalBack ?? null
+        ]
+      );
+    }
   });
 }
 
@@ -2627,6 +2368,7 @@ app.get('/api/cards', async (req, res) => {
 
   const rows = await listMyCardsRuntime(user.id);
   const entries = rows.map((row) => ({
+    id: Number(row.id),
     marketStatus: marketStatusFromCode(row.requesting),
     cardName: row.card_name,
     quantity: row.quantity,
@@ -2676,13 +2418,11 @@ app.post('/api/cards', async (req, res) => {
   const submittedCards = Array.isArray(req.body?.cards) ? req.body.cards : [];
   const saveModeRaw = String(req.body?.mode || '').trim().toLowerCase();
   const saveMode = saveModeRaw === 'add' ? 'add' : 'replace';
-  const cardMap = new Map();
+  const entries = [];
 
   for (const submitted of submittedCards) {
     let cardName = '';
-    let quantity = 1;
     let marketStatusCode = 0;
-    let askingQuantity = null;
     let askingPriceCents = null;
     let offerPriceCents = null;
     let condition = null;
@@ -2699,19 +2439,7 @@ app.post('/api/cards', async (req, res) => {
       cardName = submitted.trim();
     } else if (submitted && typeof submitted === 'object') {
       cardName = String(submitted.cardName || submitted.name || '').trim();
-      quantity = Number(submitted.quantity);
-      if (!Number.isFinite(quantity) || quantity < 0) {
-        quantity = 1;
-      } else {
-        quantity = Math.floor(quantity);
-      }
       marketStatusCode = parseMarketStatusFromSubmittedCard(submitted);
-      if (submitted.askingQuantity !== null && submitted.askingQuantity !== undefined) {
-        const rawAskQty = Number(submitted.askingQuantity);
-        if (Number.isFinite(rawAskQty) && rawAskQty >= 0) {
-          askingQuantity = Math.floor(rawAskQty);
-        }
-      }
       askingPriceCents = parseAskingPriceCentsFromSubmittedCard(submitted);
       offerPriceCents = parseOfferPriceCentsFromSubmittedCard(submitted);
       condition = parseConditionFromSubmittedCard(submitted);
@@ -2731,70 +2459,38 @@ app.post('/api/cards', async (req, res) => {
       continue;
     }
 
-    const identityKey = scryfallId ? `id:${scryfallId.toLowerCase()}` : `name:${cardName.toLowerCase()}`;
-    const existing = cardMap.get(identityKey);
-    if (existing) {
-      existing.quantity += quantity;
-      existing.marketStatusCode = Math.max(existing.marketStatusCode, marketStatusCode);
-      if (askingPriceCents !== null) {
-        existing.askingPriceCents = askingPriceCents;
-      }
-      if (offerPriceCents !== null) {
-        existing.offerPriceCents = offerPriceCents;
-      }
-      if (condition !== null) {
-        existing.condition = condition;
-      }
-      if (askingQuantity !== null) {
-        existing.askingQuantity = askingQuantity;
-      }
-      if (scryfallId) {
-        existing.scryfallId = scryfallId;
-        existing.setCode = setCode;
-        existing.setName = setName;
-        existing.collectorNumber = collectorNumber;
-        existing.imageSmall = imageSmall;
-        existing.imageNormal = imageNormal;
-      }
-    } else {
-      cardMap.set(identityKey, {
-        cardName,
-        quantity,
-        marketStatusCode,
-        askingQuantity,
-        askingPriceCents,
-        offerPriceCents,
-        condition,
-        scryfallId,
-        setCode,
-        setName,
-        collectorNumber,
-        imageSmall,
-        imageNormal,
-        imageSmallBack,
-        imageNormalBack
-      });
-    }
+    // Each submitted entry is one individual card — no deduplication.
+    entries.push({
+      cardName,
+      quantity: 1,
+      marketStatusCode,
+      askingQuantity: null,
+      askingPriceCents,
+      offerPriceCents,
+      condition,
+      scryfallId,
+      setCode,
+      setName,
+      collectorNumber,
+      imageSmall,
+      imageNormal,
+      imageSmallBack,
+      imageNormalBack
+    });
   }
 
-  const entries = Array.from(cardMap.values());
-  const totalCards = entries.reduce((sum, entry) => sum + entry.quantity, 0);
+  const totalCards = entries.length;
 
   if (entries.length === 0) {
     return res.status(400).json({ error: 'Please provide at least one card.' });
   }
 
-  if (entries.length > 1000 || totalCards > 5000) {
-    return res.status(400).json({ error: 'Card list is too large (max 1000 unique / 5000 total).' });
+  if (entries.length > 5000) {
+    return res.status(400).json({ error: 'Card list is too large (max 5000 individual cards).' });
   }
 
   await saveCardsRuntime(user.id, entries, saveMode);
-  const expandedCards = [];
-  for (const entry of entries) {
-    for (let i = 0; i < entry.quantity; i += 1) {
-      expandedCards.push(entry.cardName);
-    }
-  }
+  const expandedCards = entries.map((entry) => entry.cardName);
   const normalizedEntries = entries.map((entry) => ({
     ...entry,
     marketStatus: marketStatusFromCode(entry.marketStatusCode),
@@ -2820,12 +2516,12 @@ app.delete('/api/cards', async (req, res) => {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
 
-  const cardName = String(req.body?.cardName || '').trim();
-  if (!cardName) {
-    return res.status(400).json({ error: 'Please provide a cardName.' });
+  const cardId = Number(req.body?.id);
+  if (!Number.isFinite(cardId) || cardId <= 0) {
+    return res.status(400).json({ error: 'Please provide a card id.' });
   }
 
-  const info = await deleteMyCardByNameRuntime(user.id, cardName);
+  const info = await deleteMyCardByIdRuntime(user.id, cardId);
   return res.json({ ok: true, deleted: info.changes || info.rowCount || 0 });
 });
 
