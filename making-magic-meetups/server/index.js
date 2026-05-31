@@ -583,6 +583,37 @@ const searchAccounts = db.prepare(`
   LIMIT 10
 `);
 
+const findMatchesSqlite = db.prepare(`
+  SELECT
+    other.username,
+    mc_me.card_name,
+    CASE WHEN mc_me.offer_price_cents IS NOT NULL THEN 'buyer' ELSE 'seller' END AS my_role,
+    CASE WHEN mc_me.offer_price_cents IS NOT NULL
+         THEN mc_me.offer_price_cents
+         ELSE mc_me.asking_price_cents
+    END AS my_price_cents,
+    CASE WHEN mc_me.offer_price_cents IS NOT NULL
+         THEN mc_other.asking_price_cents
+         ELSE mc_other.offer_price_cents
+    END AS their_price_cents
+  FROM my_cards mc_me
+  JOIN my_cards mc_other
+    ON LOWER(TRIM(mc_other.card_name)) = LOWER(TRIM(mc_me.card_name))
+    AND mc_other.account_id != mc_me.account_id
+  JOIN accounts other ON other.id = mc_other.account_id
+  WHERE mc_me.account_id = ?
+    AND (
+      (mc_me.offer_price_cents IS NOT NULL
+       AND mc_other.asking_price_cents IS NOT NULL
+       AND mc_me.offer_price_cents * 10 >= mc_other.asking_price_cents * 8)
+      OR
+      (mc_me.asking_price_cents IS NOT NULL
+       AND mc_other.offer_price_cents IS NOT NULL
+       AND mc_other.offer_price_cents * 10 >= mc_me.asking_price_cents * 8)
+    )
+  ORDER BY mc_me.card_name COLLATE NOCASE ASC
+`);
+
 const clearAccountCards = db.prepare(`
   DELETE FROM account_card_items
   WHERE account_id = ?
@@ -1735,6 +1766,44 @@ async function searchAccountsRuntime(query, excludeId) {
      WHERE LOWER(username) LIKE LOWER($1) AND id != $2
      ORDER BY username ASC LIMIT 10`,
     [`%${query}%`, excludeId]
+  );
+  return rows;
+}
+
+async function findMatchesRuntime(accountId) {
+  if (!usePostgresRuntime) {
+    return findMatchesSqlite.all(accountId);
+  }
+  const { rows } = await pgQuery(
+    `SELECT
+       other.username,
+       mc_me.card_name,
+       CASE WHEN mc_me.offer_price_cents IS NOT NULL THEN 'buyer' ELSE 'seller' END AS my_role,
+       CASE WHEN mc_me.offer_price_cents IS NOT NULL
+            THEN mc_me.offer_price_cents
+            ELSE mc_me.asking_price_cents
+       END AS my_price_cents,
+       CASE WHEN mc_me.offer_price_cents IS NOT NULL
+            THEN mc_other.asking_price_cents
+            ELSE mc_other.offer_price_cents
+       END AS their_price_cents
+     FROM my_cards mc_me
+     JOIN my_cards mc_other
+       ON LOWER(TRIM(mc_other.card_name)) = LOWER(TRIM(mc_me.card_name))
+       AND mc_other.account_id != mc_me.account_id
+     JOIN accounts other ON other.id = mc_other.account_id
+     WHERE mc_me.account_id = $1
+       AND (
+         (mc_me.offer_price_cents IS NOT NULL
+          AND mc_other.asking_price_cents IS NOT NULL
+          AND mc_me.offer_price_cents * 10 >= mc_other.asking_price_cents * 8)
+         OR
+         (mc_me.asking_price_cents IS NOT NULL
+          AND mc_other.offer_price_cents IS NOT NULL
+          AND mc_other.offer_price_cents * 10 >= mc_me.asking_price_cents * 8)
+       )
+     ORDER BY LOWER(mc_me.card_name) ASC`,
+    [accountId]
   );
   return rows;
 }
@@ -2929,6 +2998,23 @@ app.get('/api/users/search', async (req, res) => {
   return res.json({
     users: accounts.map((a) => ({ username: a.username, fullName: a.full_name }))
   });
+});
+
+app.get('/api/matches', async (req, res) => {
+  const credentials = parseBasicAuth(req);
+  if (!credentials) return res.status(401).json({ error: 'Unauthorized.' });
+  const user = await authenticateLoginRuntime(credentials.identifier, credentials.password);
+  if (!user || user.role !== 'user') return res.status(401).json({ error: 'Unauthorized.' });
+
+  const rows = await findMatchesRuntime(Number(user.id));
+  const matches = rows.map((row) => ({
+    cardName: row.card_name,
+    username: row.username,
+    myRole: row.my_role,
+    myPriceCents: row.my_price_cents === null ? null : Number(row.my_price_cents),
+    theirPriceCents: row.their_price_cents === null ? null : Number(row.their_price_cents)
+  }));
+  return res.json({ matches });
 });
 
 // ── End Messages API ──────────────────────────────────────────────────────────

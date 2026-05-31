@@ -153,6 +153,9 @@ export default function App() {
   const [activeConversationUsername, setActiveConversationUsername] = useState(null);
   const [userSearchResults, setUserSearchResults] = useState([]);
   const [userSearchLoading, setUserSearchLoading] = useState(false);
+  // Card matches
+  const [cardMatches, setCardMatches] = useState([]);
+  const [matchesLoading, setMatchesLoading] = useState(false);
 
   useEffect(() => {
     function syncRouteFromHash() {
@@ -344,6 +347,7 @@ export default function App() {
       return;
     }
     loadUserCardsFromApi(loginAuthHeader);
+    loadMatchesFromApi();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route, loggedInUser, loginAuthHeader, apiBaseUrl]);
 
@@ -1624,6 +1628,26 @@ export default function App() {
       setMessages([]);
     } finally {
       setMessagesLoading(false);
+    }
+  }
+
+  async function loadMatchesFromApi() {
+    if (!loginAuthHeader) return;
+    setMatchesLoading(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/matches`, {
+        headers: { Authorization: loginAuthHeader }
+      });
+      if (!response.ok) {
+        setCardMatches([]);
+        return;
+      }
+      const payload = await response.json();
+      setCardMatches(Array.isArray(payload.matches) ? payload.matches : []);
+    } catch (_err) {
+      setCardMatches([]);
+    } finally {
+      setMatchesLoading(false);
     }
   }
 
@@ -3038,6 +3062,66 @@ export default function App() {
                 ) : (
                   <p>No saved cards yet.</p>
                 )}
+
+                {/* ── Potential Matches ── */}
+                <div className="card-upload-results matches-section">
+                  <h2>Potential Matches</h2>
+                  <p className="notice subtle">
+                    Users whose Ask or Offer price on the same card overlaps yours within 20%.
+                  </p>
+                  {matchesLoading ? (
+                    <p className="notice subtle">Finding matches…</p>
+                  ) : cardMatches.length === 0 ? (
+                    <p className="notice subtle">
+                      No matches yet. Set an Ask Price (selling) or Offer Price (buying) on your
+                      cards to find users to trade with.
+                    </p>
+                  ) : (
+                    <table className="price-table matches-table desktop-table-only">
+                      <thead>
+                        <tr>
+                          <th>Card</th>
+                          <th>User</th>
+                          <th>My Role</th>
+                          <th>My Price</th>
+                          <th>Their Price</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cardMatches.map((match, i) => (
+                          <tr key={`${match.username}-${match.cardName}-${i}`}>
+                            <td>{match.cardName}</td>
+                            <td>@{match.username}</td>
+                            <td>{match.myRole === 'buyer' ? 'Buying' : 'Selling'}</td>
+                            <td>
+                              {match.myPriceCents != null
+                                ? `$${formatCents(match.myPriceCents)}`
+                                : '—'}
+                            </td>
+                            <td>
+                              {match.theirPriceCents != null
+                                ? `$${formatCents(match.theirPriceCents)}`
+                                : '—'}
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className="action-button primary"
+                                onClick={() => {
+                                  setComposeRecipient(match.username);
+                                  window.location.hash = '#/messages';
+                                }}
+                              >
+                                Message
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </>
             )}
           </section>

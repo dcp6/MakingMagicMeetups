@@ -777,6 +777,14 @@ h1 {
   text-decoration: underline;
 }
 
+.matches-section {
+  margin-top: 2rem;
+}
+
+.matches-table td:last-child {
+  white-space: nowrap;
+}
+
 .dashboard-actions {
   margin: 0.4rem 0 0.2rem;
   display: flex;
