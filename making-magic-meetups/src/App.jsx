@@ -176,6 +176,8 @@ export default function App() {
   // Card matches
   const [cardMatches, setCardMatches] = useState([]);
   const [matchesLoading, setMatchesLoading] = useState(false);
+  // Price Matches dashboard filter
+  const [priceMatchFilter, setPriceMatchFilter] = useState('all');
 
   useEffect(() => {
     function syncRouteFromHash() {
@@ -2245,6 +2247,43 @@ export default function App() {
   }
 
   if (route === 'dashboard') {
+    // ── Price Matches data ───────────────────────────────────────────────────
+    const pmAllRows = uploadedCards.map((card) => {
+      const market = card.unitUsd ?? null;
+      const setPriceCents =
+        card.marketStatus === 'offering'
+          ? card.offerPriceCents
+          : card.marketStatus === 'requesting'
+          ? card.askingPriceCents
+          : null;
+      const setPrice = setPriceCents != null ? setPriceCents / 100 : null;
+      const delta = market != null && setPrice != null ? setPrice - market : null;
+      const pct = market != null && market > 0 && delta != null ? delta / market : null;
+      return { card, market, setPrice, delta, pct };
+    });
+
+    pmAllRows.sort((a, b) => {
+      const aPct = a.pct != null ? Math.abs(a.pct) : -Infinity;
+      const bPct = b.pct != null ? Math.abs(b.pct) : -Infinity;
+      if (bPct !== aPct) return bPct - aPct;
+      return (b.market ?? 0) - (a.market ?? 0);
+    });
+
+    const pmRows =
+      priceMatchFilter === 'all'
+        ? pmAllRows
+        : pmAllRows.filter((r) => r.card.marketStatus === priceMatchFilter);
+
+    const totalMarket = uploadedCards.reduce((sum, c) => sum + (c.unitUsd ?? 0), 0);
+    const flagged = pmAllRows.filter((r) => r.pct != null && Math.abs(r.pct) >= 0.15).length;
+
+    const PM_FILTERS = [
+      { key: 'all', label: 'All' },
+      { key: 'have', label: 'Own' },
+      { key: 'requesting', label: 'Want' },
+      { key: 'offering', label: 'Offer' },
+    ];
+
     return (
       <div className="page">
         <header className="topbar">
@@ -2253,15 +2292,11 @@ export default function App() {
         </header>
 
         <main>
-          <section className="join">
-            <p className="kicker">Dashboard</p>
-            <h1>Dashboard</h1>
-            <p>
-              {loggedInUser?.role === 'admin'
-                ? 'Admin view: account credentials and users.'
-                : 'Find a Magic store near you, or manage your cards on the My Cards page.'}
-            </p>
-            {loggedInUser?.role === 'admin' ? (
+          {loggedInUser?.role === 'admin' ? (
+            <section className="join">
+              <p className="kicker">Dashboard</p>
+              <h1>Admin</h1>
+              <p>Account credentials and users.</p>
               <div className="card-upload-results">
                 <h2>Account Credentials</h2>
                 <table className="price-table">
@@ -2317,8 +2352,7 @@ export default function App() {
                 </table>
                 <h2>Future Is Now material</h2>
                 <p className="notice subtle">
-                  This section is visible to admin users only. Add future rollout notes, protected links,
-                  and internal planning material here.
+                  This section is visible to admin users only.
                 </p>
                 <div className="dashboard-tool">
                   {futureIsNowMaterial.map((value, index) => (
@@ -2336,137 +2370,194 @@ export default function App() {
                   ))}
                 </div>
               </div>
-            ) : null}
-            {loggedInUser?.role === 'user' ? (
-              <p>
-                Upload and manage your card list on the{' '}
-                <a href="#/my-cards">My Cards</a> page.
-              </p>
-            ) : null}
+            </section>
+          ) : loggedInUser?.role === 'user' ? (
+            <div className="pm-page">
+              {/* ── Hero header ── */}
+              <div className="pm-hero">
+                <div className="pm-hero-title">
+                  <p className="kicker">Dashboard</p>
+                  <h1>Price Matches</h1>
+                </div>
+                {uploadedCards.length > 0 && !isCardPriceLoading ? (
+                  <div className="pm-stats-strip">
+                    <div className="pm-stat">
+                      <span className="pm-stat-value">{uploadedCards.length}</span>
+                      <span className="pm-stat-label">card{uploadedCards.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div className="pm-stat-divider" />
+                    <div className="pm-stat">
+                      <span className="pm-stat-value">${totalMarket.toFixed(2)}</span>
+                      <span className="pm-stat-label">collection value</span>
+                    </div>
+                    {flagged > 0 ? (
+                      <>
+                        <div className="pm-stat-divider" />
+                        <div className="pm-stat pm-stat--alert">
+                          <span className="pm-stat-value">{flagged}</span>
+                          <span className="pm-stat-label">need attention</span>
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
 
-            {loggedInUser?.role === 'user' && !preferredStore ? (
-              <div className="store-locator-section">
-                <p className="notice subtle">
+              {/* ── City nudge ── */}
+              {!preferredStore ? (
+                <p className="notice subtle pm-city-nudge">
                   📍 <a href="#/settings">Set your city in Settings</a> to get nearby trade matches first.
                 </p>
-              </div>
-            ) : null}
+              ) : null}
 
-            {loggedInUser?.role === 'user' ? (() => {
-              if (isCardPriceLoading) {
-                return (
-                  <div className="price-matches-section">
-                    <h2>Price Matches</h2>
-                    <p className="notice subtle">Loading card prices…</p>
+              {/* ── Loading ── */}
+              {isCardPriceLoading ? (
+                <p className="notice subtle pm-loading">Loading card prices from Scryfall…</p>
+              ) : uploadedCards.length === 0 ? (
+                /* ── Empty state ── */
+                <div className="pm-empty">
+                  <p>You haven't added any cards yet.</p>
+                  <a href="#/my-cards" className="action-button primary">Add Cards on My Cards →</a>
+                </div>
+              ) : (
+                <>
+                  {/* ── Filter tabs ── */}
+                  <div className="pm-filters">
+                    {PM_FILTERS.map((f) => (
+                      <button
+                        key={f.key}
+                        type="button"
+                        className={`pm-filter-btn${priceMatchFilter === f.key ? ' active' : ''}`}
+                        onClick={() => setPriceMatchFilter(f.key)}
+                      >
+                        {f.label}
+                        <span className="pm-filter-count">
+                          {f.key === 'all'
+                            ? pmAllRows.length
+                            : pmAllRows.filter((r) => r.card.marketStatus === f.key).length}
+                        </span>
+                      </button>
+                    ))}
                   </div>
-                );
-              }
-              if (uploadedCards.length === 0) return null;
 
-              const rows = uploadedCards.map((card) => {
-                const market = card.unitUsd ?? null;
-                const setPriceCents =
-                  card.marketStatus === 'offering'
-                    ? card.offerPriceCents
-                    : card.marketStatus === 'requesting'
-                    ? card.askingPriceCents
-                    : null;
-                const setPrice = setPriceCents != null ? setPriceCents / 100 : null;
-                const delta = market != null && setPrice != null ? setPrice - market : null;
-                const pct = market != null && market > 0 && delta != null ? delta / market : null;
-                return { card, market, setPrice, delta, pct };
-              });
-
-              // Sort: biggest % deviation first, cards with no set price last
-              rows.sort((a, b) => {
-                const aPct = a.pct != null ? Math.abs(a.pct) : -Infinity;
-                const bPct = b.pct != null ? Math.abs(b.pct) : -Infinity;
-                if (bPct !== aPct) return bPct - aPct;
-                return (b.market ?? 0) - (a.market ?? 0);
-              });
-
-              const totalMarket = uploadedCards.reduce((sum, c) => sum + (c.unitUsd ?? 0), 0);
-              const flagged = rows.filter((r) => r.pct != null && Math.abs(r.pct) >= 0.15).length;
-
-              return (
-                <div className="price-matches-section">
-                  <div className="section-header-row">
-                    <h2>Price Matches</h2>
-                    <span className="price-matches-summary">
-                      {uploadedCards.length} card{uploadedCards.length !== 1 ? 's' : ''} · collection ~${totalMarket.toFixed(2)}
-                      {flagged > 0 ? <span className="patch-flag-count"> · {flagged} need{flagged === 1 ? 's' : ''} attention</span> : null}
-                    </span>
+                  {/* ── Price Matches table ── */}
+                  <div className="pm-hint">
+                    Your listed price vs. current Scryfall market ·{' '}
+                    <span className="pm-hint--high">green</span> = priced above ·{' '}
+                    <span className="pm-hint--low">red</span> = 15%+ below
                   </div>
-                  <p className="price-matches-hint">
-                    Your listed price vs. current Scryfall market. <strong>Green</strong> = priced above market · <strong>Red</strong> = below market by 15%+.
-                  </p>
-                  <table className="price-table price-matches-table">
-                    <thead>
-                      <tr>
-                        <th>Card</th>
-                        <th>Status</th>
-                        <th>Market</th>
-                        <th>Your Price</th>
-                        <th>Δ</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map(({ card, market, setPrice, delta, pct }) => {
-                        const marketDisplay = market != null ? `$${market.toFixed(2)}` : '—';
-                        const setPriceDisplay = setPrice != null ? `$${setPrice.toFixed(2)}` : '—';
-                        const pctDisplay =
-                          pct != null
-                            ? `${pct >= 0 ? '+' : ''}${(pct * 100).toFixed(0)}%`
-                            : '—';
-                        const rowClass =
-                          pct == null
-                            ? ''
-                            : pct <= -0.15
-                            ? 'patch-row--low'
-                            : pct >= 0.15
-                            ? 'patch-row--high'
-                            : '';
-                        const deltaClass =
-                          pct == null
-                            ? 'patch-delta--neutral'
-                            : pct <= -0.15
-                            ? 'patch-delta--low'
-                            : pct >= 0.15
-                            ? 'patch-delta--high'
-                            : 'patch-delta--ok';
-                        const statusLabel =
-                          card.marketStatus === 'offering'
-                            ? 'Offer'
-                            : card.marketStatus === 'requesting'
-                            ? 'Want'
-                            : 'Own';
-                        return (
-                          <tr key={card.id ?? card.resolvedName ?? card.inputName} className={rowClass}>
-                            <td className="patch-card-name">
-                              {card.resolvedName || card.inputName}
-                              {card.foil ? <span className="foil-label"> ✦</span> : null}
-                              {card.condition ? (
-                                <span className="patch-condition"> {card.condition.toUpperCase()}</span>
-                              ) : null}
-                            </td>
-                            <td className="patch-status">{statusLabel}</td>
-                            <td className="patch-market">{marketDisplay}</td>
-                            <td className="patch-set-price">
-                              {setPrice != null ? setPriceDisplay : <span className="patch-no-price">—</span>}
-                            </td>
-                            <td className={`patch-delta ${deltaClass}`}>{pctDisplay}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+
+                  {pmRows.length === 0 ? (
+                    <p className="notice subtle">No cards in this category.</p>
+                  ) : (
+                    <table className="price-table pm-table">
+                      <thead>
+                        <tr>
+                          <th className="pm-col-pic">Pic</th>
+                          <th className="pm-col-card">Card</th>
+                          <th className="pm-col-status">Status</th>
+                          <th className="pm-col-market">Market</th>
+                          <th className="pm-col-price">Your Price</th>
+                          <th className="pm-col-delta">Δ</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pmRows.map(({ card, market, setPrice, pct }) => {
+                          const marketDisplay = market != null ? `$${market.toFixed(2)}` : '—';
+                          const setPriceDisplay = setPrice != null ? `$${setPrice.toFixed(2)}` : null;
+                          const pctDisplay =
+                            pct != null
+                              ? `${pct >= 0 ? '+' : ''}${(pct * 100).toFixed(0)}%`
+                              : '—';
+                          const rowClass =
+                            pct != null && pct <= -0.15
+                              ? 'patch-row--low'
+                              : pct != null && pct >= 0.15
+                              ? 'patch-row--high'
+                              : '';
+                          const deltaClass =
+                            pct == null
+                              ? 'patch-delta--neutral'
+                              : pct <= -0.15
+                              ? 'patch-delta--low'
+                              : pct >= 0.15
+                              ? 'patch-delta--high'
+                              : 'patch-delta--ok';
+                          const statusLabel =
+                            card.marketStatus === 'offering'
+                              ? 'Offer'
+                              : card.marketStatus === 'requesting'
+                              ? 'Want'
+                              : 'Own';
+                          const statusMod =
+                            card.marketStatus === 'offering'
+                              ? 'offer'
+                              : card.marketStatus === 'requesting'
+                              ? 'want'
+                              : 'have';
+                          return (
+                            <tr key={card.id ?? card.resolvedName ?? card.inputName} className={rowClass}>
+                              <td className="pm-col-pic">
+                                {card.imageSmall ? (
+                                  <div className="thumb-wrap">
+                                    <img
+                                      className="card-thumb"
+                                      src={card.imageSmall}
+                                      alt={card.resolvedName}
+                                      loading="lazy"
+                                    />
+                                    {card.imageNormal || card.imageSmall ? (
+                                      <img
+                                        className="card-thumb-preview front"
+                                        src={card.imageNormal || card.imageSmall}
+                                        alt=""
+                                        loading="lazy"
+                                      />
+                                    ) : null}
+                                  </div>
+                                ) : (
+                                  <div className="pm-no-thumb" />
+                                )}
+                              </td>
+                              <td className="patch-card-name">
+                                <span className="pm-card-name-text">{card.resolvedName || card.inputName}</span>
+                                {card.foil ? <span className="foil-label"> ✦</span> : null}
+                                {card.condition ? (
+                                  <span className="patch-condition"> {card.condition.toUpperCase()}</span>
+                                ) : null}
+                              </td>
+                              <td>
+                                <span className={`pm-status-pill pm-status-pill--${statusMod}`}>
+                                  {statusLabel}
+                                </span>
+                              </td>
+                              <td className="patch-market">{marketDisplay}</td>
+                              <td className="patch-set-price">
+                                {setPriceDisplay ?? <span className="patch-no-price">—</span>}
+                              </td>
+                              <td className={`patch-delta ${deltaClass}`}>{pctDisplay}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+
                   <p className="price-matches-footer">
                     <a href="#/my-cards">Update prices on My Cards →</a>
                   </p>
-                </div>
-              );
-            })() : null}
-          </section>
+                </>
+              )}
+            </div>
+          ) : (
+            <section className="join">
+              <p className="kicker">Dashboard</p>
+              <h1>Price Matches</h1>
+              <p>
+                <a href="#/login">Log in</a> to see your card price matches.
+              </p>
+            </section>
+          )}
         </main>
         {loginServiceIndicator}
       </div>
