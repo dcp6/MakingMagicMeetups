@@ -2808,47 +2808,53 @@ app.get('/api/users/search', async (req, res) => {
   });
 });
 
+const BEST_OFFERS_SQL = `
+  SELECT * FROM (
+    SELECT
+      mc.id, mc.card_name, mc.offer_price_cents, mc.asking_price_cents, mc.market_price_cents,
+      'offer' AS deal_type,
+      (mc.market_price_cents - mc.offer_price_cents) AS sort_val,
+      mc.condition, mc.foil, mc.scryfall_id, mc.set_code, mc.set_name,
+      mc.collector_number, mc.image_small, mc.image_normal,
+      a.username
+    FROM my_cards mc
+    JOIN accounts a ON a.id = mc.account_id
+    WHERE mc.requesting = 1
+      AND mc.offer_price_cents IS NOT NULL
+      AND mc.market_price_cents IS NOT NULL
+      AND mc.market_price_cents > 0
+      AND mc.offer_price_cents * 100 <= mc.market_price_cents * 85
+
+    UNION ALL
+
+    SELECT
+      mc.id, mc.card_name, mc.offer_price_cents, mc.asking_price_cents, mc.market_price_cents,
+      'want' AS deal_type,
+      (mc.asking_price_cents - mc.market_price_cents) AS sort_val,
+      mc.condition, mc.foil, mc.scryfall_id, mc.set_code, mc.set_name,
+      mc.collector_number, mc.image_small, mc.image_normal,
+      a.username
+    FROM my_cards mc
+    JOIN accounts a ON a.id = mc.account_id
+    WHERE mc.requesting = 2
+      AND mc.asking_price_cents IS NOT NULL
+      AND mc.market_price_cents IS NOT NULL
+      AND mc.market_price_cents > 0
+      AND mc.asking_price_cents * 100 >= mc.market_price_cents * 115
+  ) combined
+  ORDER BY sort_val DESC
+`;
+
 app.get('/api/great-offers', async (_req, res) => {
   try {
-    const DISCOUNT_THRESHOLD = 0.85; // offer must be ≤ 85% of market (15%+ off)
     const LIMIT = 24;
 
     if (!usePostgresRuntime) {
-      const rows = db.prepare(`
-        SELECT
-          mc.id, mc.card_name, mc.offer_price_cents, mc.market_price_cents,
-          mc.condition, mc.foil, mc.scryfall_id, mc.set_code, mc.set_name,
-          mc.collector_number, mc.image_small, mc.image_normal,
-          a.username
-        FROM my_cards mc
-        JOIN accounts a ON a.id = mc.account_id
-        WHERE mc.requesting = 1
-          AND mc.offer_price_cents IS NOT NULL
-          AND mc.market_price_cents IS NOT NULL
-          AND mc.market_price_cents > 0
-          AND mc.offer_price_cents * 100 <= mc.market_price_cents * 85
-        ORDER BY (mc.market_price_cents - mc.offer_price_cents) DESC
-        LIMIT ${LIMIT}
-      `).all();
+      const rows = db.prepare(`${BEST_OFFERS_SQL} LIMIT ${LIMIT}`).all();
       return res.json({ offers: rows.map(normalizeGreatOffer) });
     }
 
-    const { rows } = await pgQuery(`
-      SELECT
-        mc.id, mc.card_name, mc.offer_price_cents, mc.market_price_cents,
-        mc.condition, mc.foil, mc.scryfall_id, mc.set_code, mc.set_name,
-        mc.collector_number, mc.image_small, mc.image_normal,
-        a.username
-      FROM my_cards mc
-      JOIN accounts a ON a.id = mc.account_id
-      WHERE mc.requesting = 1
-        AND mc.offer_price_cents IS NOT NULL
-        AND mc.market_price_cents IS NOT NULL
-        AND mc.market_price_cents > 0
-        AND mc.offer_price_cents::numeric * 100 <= mc.market_price_cents::numeric * 85
-      ORDER BY (mc.market_price_cents - mc.offer_price_cents) DESC
-      LIMIT $1
-    `, [LIMIT]);
+    const { rows } = await pgQuery(`${BEST_OFFERS_SQL} LIMIT $1`, [LIMIT]);
     return res.json({ offers: rows.map(normalizeGreatOffer) });
   } catch (err) {
     console.error('/api/great-offers error', err);
@@ -2857,15 +2863,23 @@ app.get('/api/great-offers', async (_req, res) => {
 });
 
 function normalizeGreatOffer(row) {
-  const offerCents = Number(row.offer_price_cents);
   const marketCents = Number(row.market_price_cents);
-  const discountPct = marketCents > 0 ? Math.round((1 - offerCents / marketCents) * 100) : 0;
+  const dealType = row.deal_type;
+  const priceCents = dealType === 'offer'
+    ? Number(row.offer_price_cents)
+    : Number(row.asking_price_cents);
+  const pct = marketCents > 0
+    ? dealType === 'offer'
+      ? Math.round((1 - priceCents / marketCents) * 100)
+      : Math.round((priceCents / marketCents - 1) * 100)
+    : 0;
   return {
     id: row.id,
+    dealType,
     cardName: row.card_name,
-    offerPriceCents: offerCents,
+    priceCents,
     marketPriceCents: marketCents,
-    discountPct,
+    pct,
     condition: row.condition || null,
     foil: Boolean(row.foil),
     scryfallId: row.scryfall_id || null,

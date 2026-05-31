@@ -3529,24 +3529,28 @@ export default function App() {
           ))}
         </section>
 
-        {/* ── Great Offers ── */}
+        {/* ── Best Offers ── */}
         {(greatOffersLoading || greatOffers.length > 0) ? (
           <section className="great-offers-section">
             <div className="great-offers-header">
-              <h2>🔥 Great Offers!</h2>
+              <h2>Best Offers</h2>
               <span className="great-offers-subtitle">
-                Cards priced 15%+ below market — trade away!
+                Offers 15%+ below market · Wants 15%+ above market
               </span>
             </div>
             {greatOffersLoading ? (
-              <p className="notice subtle">Loading offers…</p>
+              <p className="notice subtle">Loading…</p>
             ) : (
               <div className="great-offers-grid">
                 {greatOffers.map((offer) => {
-                  const offerDollars = (offer.offerPriceCents / 100).toFixed(2);
+                  const isOffer = offer.dealType === 'offer';
+                  const priceDollars = (offer.priceCents / 100).toFixed(2);
                   const marketDollars = (offer.marketPriceCents / 100).toFixed(2);
+                  const userLink = loggedInUser
+                    ? `#/messages?compose=${offer.username}`
+                    : '#/login';
                   return (
-                    <div key={offer.id} className="great-offer-card">
+                    <div key={`${offer.dealType}-${offer.id}`} className={`great-offer-card great-offer-card--${offer.dealType}`}>
                       <div className="great-offer-img-wrap">
                         {offer.imageSmall ? (
                           <img
@@ -3558,7 +3562,9 @@ export default function App() {
                         ) : (
                           <div className="great-offer-img-placeholder" />
                         )}
-                        <span className="great-offer-badge">−{offer.discountPct}%</span>
+                        <span className={`great-offer-badge great-offer-badge--${offer.dealType}`}>
+                          {isOffer ? `−${offer.pct}%` : `+${offer.pct}%`}
+                        </span>
                       </div>
                       <div className="great-offer-info">
                         <p className="great-offer-name">
@@ -3569,18 +3575,18 @@ export default function App() {
                           ) : null}
                         </p>
                         <p className="great-offer-prices">
-                          <span className="great-offer-price">${offerDollars}</span>
+                          <span className={`great-offer-price great-offer-price--${offer.dealType}`}>
+                            ${priceDollars}
+                          </span>
                           <span className="great-offer-market">mkt ${marketDollars}</span>
                         </p>
+                        <p className="great-offer-label">
+                          {isOffer ? 'Offering' : 'Wants to pay'}
+                        </p>
                         <p className="great-offer-seller">
-                          by{' '}
-                          {loggedInUser ? (
-                            <a href={`#/messages?compose=${offer.username}`} className="great-offer-user">
-                              {offer.username}
-                            </a>
-                          ) : (
-                            <a href="#/login" className="great-offer-user">{offer.username}</a>
-                          )}
+                          <a href={userLink} className="great-offer-user">
+                            {offer.username}
+                          </a>
                         </p>
                       </div>
                     </div>

@@ -1831,14 +1831,16 @@ h1 {
   position: absolute;
   top: 0.4rem;
   right: 0.4rem;
-  background: #dc2626;
-  color: #fff;
   font-size: 0.72rem;
   font-weight: 700;
   border-radius: 999px;
   padding: 0.15rem 0.5rem;
   letter-spacing: 0.02em;
+  color: #fff;
 }
+
+.great-offer-badge--offer { background: #dc2626; }
+.great-offer-badge--want  { background: #0891b2; }
 
 .great-offer-info {
   padding: 0.6rem 0.7rem 0.75rem;
@@ -1866,15 +1868,24 @@ h1 {
 .great-offer-price {
   font-size: 1rem;
   font-weight: 700;
-  color: #16a34a;
   font-variant-numeric: tabular-nums;
 }
+
+.great-offer-price--offer { color: #16a34a; }
+.great-offer-price--want  { color: #0891b2; }
 
 .great-offer-market {
   font-size: 0.72rem;
   color: var(--text-700);
   font-variant-numeric: tabular-nums;
   text-decoration: line-through;
+}
+
+.great-offer-label {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-700);
+  font-style: italic;
 }
 
 .great-offer-seller {
