@@ -1311,6 +1311,9 @@ async function validatePostgresRuntimeOrExit() {
     // Incremental column migrations — safe to run repeatedly (IF NOT EXISTS).
     await pgQuery(`ALTER TABLE my_cards ADD COLUMN IF NOT EXISTS offer_price_cents INTEGER`);
     await pgQuery(`ALTER TABLE my_cards ADD COLUMN IF NOT EXISTS condition TEXT`);
+    await pgQuery(`ALTER TABLE my_cards ADD COLUMN IF NOT EXISTS foil INTEGER NOT NULL DEFAULT 0`);
+    await pgQuery(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS preferred_store_latitude DOUBLE PRECISION`);
+    await pgQuery(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS preferred_store_longitude DOUBLE PRECISION`);
 
     // Drop the (account_id, card_name) unique constraint so multiple rows per card are allowed.
     // The constraint name may vary; try both the default Postgres name and an explicit one.

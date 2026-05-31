@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   preferred_store_url TEXT,
   preferred_store_website TEXT,
   preferred_store_phone TEXT,
+  preferred_store_latitude DOUBLE PRECISION,
+  preferred_store_longitude DOUBLE PRECISION,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -62,6 +64,8 @@ CREATE TABLE IF NOT EXISTS my_cards (
   asking_quantity INTEGER,
   asking_price_cents INTEGER,
   offer_price_cents INTEGER,
+  condition TEXT,
+  foil INTEGER NOT NULL DEFAULT 0,
   scryfall_id TEXT,
   set_code TEXT,
   set_name TEXT,
