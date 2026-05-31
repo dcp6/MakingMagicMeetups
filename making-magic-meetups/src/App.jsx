@@ -360,14 +360,16 @@ export default function App() {
   }, [route, loggedInUser, loginAuthHeader, apiBaseUrl]);
 
   useEffect(() => {
-    if (route !== 'my-cards') {
+    if (route !== 'my-cards' && route !== 'dashboard') {
       return;
     }
     if (!loggedInUser || loggedInUser.role !== 'user' || !loginAuthHeader) {
       return;
     }
     loadUserCardsFromApi(loginAuthHeader);
-    loadMatchesFromApi();
+    if (route === 'my-cards') {
+      loadMatchesFromApi();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route, loggedInUser, loginAuthHeader, apiBaseUrl]);
 
@@ -2349,6 +2351,121 @@ export default function App() {
                 </p>
               </div>
             ) : null}
+
+            {loggedInUser?.role === 'user' ? (() => {
+              if (isCardPriceLoading) {
+                return (
+                  <div className="price-patches-section">
+                    <h2>Price Patches</h2>
+                    <p className="notice subtle">Loading card prices…</p>
+                  </div>
+                );
+              }
+              if (uploadedCards.length === 0) return null;
+
+              const rows = uploadedCards.map((card) => {
+                const market = card.unitUsd ?? null;
+                const setPriceCents =
+                  card.marketStatus === 'offering'
+                    ? card.offerPriceCents
+                    : card.marketStatus === 'requesting'
+                    ? card.askingPriceCents
+                    : null;
+                const setPrice = setPriceCents != null ? setPriceCents / 100 : null;
+                const delta = market != null && setPrice != null ? setPrice - market : null;
+                const pct = market != null && market > 0 && delta != null ? delta / market : null;
+                return { card, market, setPrice, delta, pct };
+              });
+
+              // Sort: biggest % deviation first, cards with no set price last
+              rows.sort((a, b) => {
+                const aPct = a.pct != null ? Math.abs(a.pct) : -Infinity;
+                const bPct = b.pct != null ? Math.abs(b.pct) : -Infinity;
+                if (bPct !== aPct) return bPct - aPct;
+                return (b.market ?? 0) - (a.market ?? 0);
+              });
+
+              const totalMarket = uploadedCards.reduce((sum, c) => sum + (c.unitUsd ?? 0), 0);
+              const flagged = rows.filter((r) => r.pct != null && Math.abs(r.pct) >= 0.15).length;
+
+              return (
+                <div className="price-patches-section">
+                  <div className="section-header-row">
+                    <h2>Price Patches</h2>
+                    <span className="price-patches-summary">
+                      {uploadedCards.length} card{uploadedCards.length !== 1 ? 's' : ''} · collection ~${totalMarket.toFixed(2)}
+                      {flagged > 0 ? <span className="patch-flag-count"> · {flagged} need{flagged === 1 ? 's' : ''} attention</span> : null}
+                    </span>
+                  </div>
+                  <p className="price-patches-hint">
+                    Your listed price vs. current Scryfall market. <strong>Green</strong> = priced above market · <strong>Red</strong> = below market by 15%+.
+                  </p>
+                  <table className="price-table price-patches-table">
+                    <thead>
+                      <tr>
+                        <th>Card</th>
+                        <th>Status</th>
+                        <th>Market</th>
+                        <th>Your Price</th>
+                        <th>Δ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map(({ card, market, setPrice, delta, pct }) => {
+                        const marketDisplay = market != null ? `$${market.toFixed(2)}` : '—';
+                        const setPriceDisplay = setPrice != null ? `$${setPrice.toFixed(2)}` : '—';
+                        const pctDisplay =
+                          pct != null
+                            ? `${pct >= 0 ? '+' : ''}${(pct * 100).toFixed(0)}%`
+                            : '—';
+                        const rowClass =
+                          pct == null
+                            ? ''
+                            : pct <= -0.15
+                            ? 'patch-row--low'
+                            : pct >= 0.15
+                            ? 'patch-row--high'
+                            : '';
+                        const deltaClass =
+                          pct == null
+                            ? 'patch-delta--neutral'
+                            : pct <= -0.15
+                            ? 'patch-delta--low'
+                            : pct >= 0.15
+                            ? 'patch-delta--high'
+                            : 'patch-delta--ok';
+                        const statusLabel =
+                          card.marketStatus === 'offering'
+                            ? 'Offer'
+                            : card.marketStatus === 'requesting'
+                            ? 'Want'
+                            : 'Own';
+                        return (
+                          <tr key={card.id ?? card.resolvedName ?? card.inputName} className={rowClass}>
+                            <td className="patch-card-name">
+                              {card.resolvedName || card.inputName}
+                              {card.foil ? <span className="foil-label"> ✦</span> : null}
+                              {card.condition ? (
+                                <span className="patch-condition"> {card.condition.toUpperCase()}</span>
+                              ) : null}
+                            </td>
+                            <td className="patch-status">{statusLabel}</td>
+                            <td className="patch-market">{marketDisplay}</td>
+                            <td className="patch-set-price">
+                              {setPrice != null ? setPriceDisplay : <span className="patch-no-price">—</span>}
+                            </td>
+                            <td className={`patch-delta ${deltaClass}`}>{pctDisplay}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <p className="price-patches-footer">
+                    <a href="#/my-cards">Update prices on My Cards →</a>
+                  </p>
+                </div>
+              );
+            })() : null}
           </section>
         </main>
         {loginServiceIndicator}

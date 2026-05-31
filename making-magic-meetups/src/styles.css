@@ -1762,3 +1762,86 @@ h1 {
     min-height: 0;
   }
 }
+
+/* ── Price Patches (dashboard) ── */
+.price-patches-section {
+  margin-top: 2rem;
+}
+
+.price-patches-summary {
+  font-size: 0.85rem;
+  color: var(--text-700);
+  white-space: nowrap;
+}
+
+.patch-flag-count {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.price-patches-hint {
+  font-size: 0.8rem;
+  color: var(--text-700);
+  margin: 0.35rem 0 0.75rem;
+}
+
+.price-patches-table td {
+  vertical-align: middle;
+}
+
+.patch-card-name {
+  font-weight: 500;
+}
+
+.patch-condition {
+  font-size: 0.7rem;
+  color: var(--text-700);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.patch-status {
+  font-size: 0.78rem;
+  color: var(--text-700);
+}
+
+.patch-market,
+.patch-set-price {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.88rem;
+}
+
+.patch-no-price {
+  color: #94a3b8;
+}
+
+.patch-delta {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.patch-delta--ok   { color: #64748b; }
+.patch-delta--high { color: #16a34a; }
+.patch-delta--low  { color: #dc2626; }
+.patch-delta--neutral { color: #94a3b8; }
+
+.patch-row--high { background: #f0fdf4; }
+.patch-row--low  { background: #fff5f5; }
+
+.price-patches-footer {
+  margin-top: 0.65rem;
+  font-size: 0.82rem;
+  color: var(--text-700);
+}
+
+.price-patches-footer a {
+  color: var(--mint-400);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.price-patches-footer a:hover {
+  text-decoration: underline;
+}
