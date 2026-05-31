@@ -948,6 +948,14 @@ h1 {
   font-size: 0.74rem;
 }
 
+.mobile-price-tag--condition {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  font-variant: all-small-caps;
+  letter-spacing: 0.04em;
+}
+
 .mobile-price-tag--ask {
   background: #fffbeb;
   color: #b45309;
@@ -958,6 +966,17 @@ h1 {
   background: #f0fdf4;
   color: #166534;
   border: 1px solid #bbf7d0;
+}
+
+/* Condition select in table */
+.condition-select {
+  font-size: 0.82rem;
+  padding: 0.22rem 0.3rem;
+  border: 1px solid var(--border-200, #d1d5db);
+  border-radius: 0.3rem;
+  background: #fff;
+  cursor: pointer;
+  min-width: 54px;
 }
 
 /* ── Mobile match list ── */

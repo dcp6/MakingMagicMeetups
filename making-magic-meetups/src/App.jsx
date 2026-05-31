@@ -1402,6 +1402,7 @@ export default function App() {
           askingQuantity,
           askingPriceCents,
           offerPriceCents,
+          condition: card.condition || null,
           scryfallId: card.scryfallId || null,
           setCode: card.setCode || null,
           setName: card.setName || null,
@@ -1452,6 +1453,7 @@ export default function App() {
         askingInput: formatCents(askingPriceCents),
         offerPriceCents,
         offerInput: formatCents(offerPriceCents),
+        condition: entries[index]?.condition ?? null,
         unitUsd,
         lineTotalUsd: unitUsd !== null ? unitUsd * quantity : null,
         scryfallId,
@@ -1547,6 +1549,7 @@ export default function App() {
               entry.offerPriceCents === null || entry.offerPriceCents === undefined
                 ? null
                 : Number(entry.offerPriceCents),
+            condition: entry.condition || null,
             scryfallId: entry.scryfallId || null,
             setCode: entry.setCode || null,
             setName: entry.setName || null,
@@ -1857,6 +1860,12 @@ export default function App() {
           offerInput: formatCents(card.offerPriceCents)
         };
       })
+    );
+  }
+
+  function handleConditionChange(index, nextValue) {
+    setUploadedCards((previous) =>
+      previous.map((card, i) => (i === index ? { ...card, condition: nextValue || null } : card))
     );
   }
 
@@ -2945,6 +2954,7 @@ export default function App() {
                               <span className="mobile-card-name">{card.resolvedName || card.inputName}</span>
                               <span className="mobile-card-meta">
                                 {card.tcgLow ? <span>TCG {card.tcgLow}</span> : null}
+                                {card.condition ? <span className="mobile-price-tag mobile-price-tag--condition">{card.condition.toUpperCase()}</span> : null}
                                 {card.askingPriceCents != null ? <span className="mobile-price-tag mobile-price-tag--ask">Ask ${formatCents(card.askingPriceCents)}</span> : null}
                                 {card.offerPriceCents != null ? <span className="mobile-price-tag mobile-price-tag--offer">Offer ${formatCents(card.offerPriceCents)}</span> : null}
                               </span>
@@ -2964,6 +2974,7 @@ export default function App() {
                             <th>TCG Price</th>
                             <th># Owned</th>
                             <th># Wanted</th>
+                            <th>Condition</th>
                             <th>Ask Price</th>
                             <th>Offer Price</th>
                             <th>Actions</th>
@@ -3040,6 +3051,21 @@ export default function App() {
                                       handleRequestingAskingQuantityChange(index, e.target.value)
                                     }
                                   />
+                                </td>
+                                <td>
+                                  <select
+                                    className="condition-select"
+                                    value={card.condition || ''}
+                                    onChange={(e) => handleConditionChange(index, e.target.value)}
+                                    aria-label={`Condition for ${card.resolvedName || card.inputName}`}
+                                  >
+                                    <option value="">—</option>
+                                    <option value="nm">NM</option>
+                                    <option value="lp">LP</option>
+                                    <option value="mp">MP</option>
+                                    <option value="hp">HP</option>
+                                    <option value="dmg">DMG</option>
+                                  </select>
                                 </td>
                                 <td>
                                   <input
