@@ -101,6 +101,7 @@ export default function App() {
   const [cardInputText, setCardInputText] = useState('');
   const [uploadedCards, setUploadedCards] = useState([]);
   const [showingJustSavedCards, setShowingJustSavedCards] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [cardCostTotal, setCardCostTotal] = useState(0);
   const [cardUploadFeedback, setCardUploadFeedback] = useState('');
   const [isCardPriceLoading, setIsCardPriceLoading] = useState(false);
@@ -2749,47 +2750,58 @@ export default function App() {
               <p>Please log in with a user account to view your saved card list.</p>
             ) : (
               <>
-                <form className="dashboard-tool" onSubmit={handleCardListUpload}>
-                  <label htmlFor="card-list-input">Add cards to My Cards</label>
-                  <textarea
-                    id="card-list-input"
-                    placeholder="Example: Black Lotus&#10;Lightning Bolt&#10;Sol Ring"
-                    value={cardInputText}
-                    onChange={(event) => {
-                      setCardInputText(event.target.value);
-                      setShowingJustSavedCards(false);
-                    }}
-                    rows={5}
-                  />
-                  <button type="submit" disabled={isCardPriceLoading}>Upload Card List</button>
-                </form>
-                {cardUploadFeedback ? <p className="notice">{cardUploadFeedback}</p> : null}
-                {isCardPriceLoading ? <p className="notice subtle">Loading prices from Scryfall...</p> : null}
+                {/* ── Add Cards collapsible panel ── */}
+                <div className="add-cards-panel">
+                  <button
+                    type="button"
+                    className="add-cards-toggle"
+                    onClick={() => setShowAddForm((v) => !v)}
+                  >
+                    {showAddForm ? '✕ Cancel' : '+ Add Cards'}
+                  </button>
+                  {showAddForm && (
+                    <form className="dashboard-tool add-cards-form" onSubmit={(e) => {
+                      handleCardListUpload(e);
+                    }}>
+                      <label htmlFor="card-list-input" className="add-cards-label">
+                        Paste card names, one per line. Include set + number for a specific version, e.g. <code>Lightning Bolt (M10) 15</code>
+                      </label>
+                      <textarea
+                        id="card-list-input"
+                        placeholder="Black Lotus&#10;Lightning Bolt&#10;Sol Ring (5ED) 307"
+                        value={cardInputText}
+                        onChange={(event) => {
+                          setCardInputText(event.target.value);
+                          setShowingJustSavedCards(false);
+                        }}
+                        rows={6}
+                      />
+                      <button type="submit" className="action-button primary" disabled={isCardPriceLoading}>
+                        {isCardPriceLoading ? 'Looking up prices…' : 'Preview Cards'}
+                      </button>
+                      {cardUploadFeedback ? <p className="notice">{cardUploadFeedback}</p> : null}
+                      {isCardPriceLoading ? <p className="notice subtle">Loading prices from Scryfall…</p> : null}
+                    </form>
+                  )}
+                </div>
+
+                {/* ── Preview of pasted cards before saving ── */}
                 {cardInputText && uploadedCards.length > 0 ? (
                   <div className="card-upload-results">
-                    <h2>Uploaded Cards</h2>
-                    <div className="dashboard-actions">
+                    <div className="section-header-row">
+                      <h2>Preview — {uploadedCards.length} {uploadedCards.length === 1 ? 'card' : 'cards'}</h2>
                       <button
                         type="button"
                         className="action-button primary"
-                        onClick={() => handleSaveList({ mode: 'add' })}
+                        onClick={() => {
+                          handleSaveList({ mode: 'add' });
+                          setShowAddForm(false);
+                          setCardInputText('');
+                        }}
                         disabled={isCardPriceLoading || isCardsSaving}
                       >
-                        {isCardsSaving ? 'Saving...' : 'Save To My Cards'}
+                        {isCardsSaving ? 'Saving…' : 'Add to My Cards'}
                       </button>
-                      <label className="sort-control">
-                        <span className="sort-label">Sort by</span>
-                        <select
-                          className="sort-select"
-                          value={cardSortMode}
-                          onChange={(event) => setCardSortMode(event.target.value)}
-                        >
-                          <option value="upload">Current order</option>
-                          <option value="alpha">Name (A-Z)</option>
-                          <option value="tcgLowDesc">TCG low (High-Low)</option>
-                          <option value="tcgLowAsc">TCG low (Low-High)</option>
-                        </select>
-                      </label>
                     </div>
                     {renderMobileImageOnlyCards(
                       dashboardSortedPairs,
@@ -2871,52 +2883,76 @@ export default function App() {
                     </table>
                   </div>
                 ) : null}
-                <p>Your saved card database. Edit inline and click Save.</p>
-                <div className="dashboard-actions">
-                  <button
-                    type="button"
-                    className="action-button secondary"
-                    onClick={() => loadUserCardsFromApi(loginAuthHeader)}
-                    disabled={isCardPriceLoading || isCardsSaving}
-                  >
-                    Refresh
-                  </button>
-                  <button
-                    type="button"
-                    className="action-button primary"
-                    onClick={() => handleSaveList({ mode: 'replace' })}
-                    disabled={isCardPriceLoading || isCardsSaving || uploadedCards.length === 0}
-                  >
-                    {isCardsSaving ? 'Saving...' : 'Save'}
-                  </button>
-                  <label className="sort-control">
-                    <span className="sort-label">Sort by</span>
-                    <select
-                      className="sort-select"
-                      value={cardSortMode}
-                      onChange={(event) => setCardSortMode(event.target.value)}
-                    >
-                      <option value="upload">Current order</option>
-                      <option value="alpha">Name (A-Z)</option>
-                      <option value="tcgLowDesc">TCG low (High-Low)</option>
-                      <option value="tcgLowAsc">TCG low (Low-High)</option>
-                    </select>
-                  </label>
-                </div>
+
+                {/* ── My Cards section ── */}
                 {uploadedCards.length > 0 ? (
                   <div className="card-upload-results">
-                    <h2>My Cards</h2>
-                    <p className="notice subtle">
-                      {savedQtyTotal} {savedQtyTotal === 1 ? 'card' : 'cards'} total ·
-                      Owned: {haveQtyTotal} · Wants: {requestingQtyTotal} · Offering: {offeringQtyTotal}
-                    </p>
-                    {renderMobileImageOnlyCards(
-                      savedPairs,
-                      savedMobileSelectedCardKey,
-                      setSavedMobileSelectedCardKey,
-                      'TCGPlayer Low',
-                      (card) => card.tcgLow || 'N/A'
-                    )}
+                    <div className="section-header-row">
+                      <div>
+                        <h2>My Cards</h2>
+                        <div className="stats-chips">
+                          <span className="stat-chip">{haveQtyTotal} owned</span>
+                          <span className="stat-chip stat-chip--want">{requestingQtyTotal} wanted</span>
+                          <span className="stat-chip stat-chip--offer">{offeringQtyTotal} offering</span>
+                        </div>
+                      </div>
+                      <div className="section-actions">
+                        <label className="sort-control">
+                          <span className="sort-label sr-only">Sort by</span>
+                          <select
+                            className="sort-select"
+                            value={cardSortMode}
+                            onChange={(event) => setCardSortMode(event.target.value)}
+                          >
+                            <option value="upload">Current order</option>
+                            <option value="alpha">Name (A-Z)</option>
+                            <option value="tcgLowDesc">TCG low (High-Low)</option>
+                            <option value="tcgLowAsc">TCG low (Low-High)</option>
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          className="action-button secondary"
+                          onClick={() => loadUserCardsFromApi(loginAuthHeader)}
+                          disabled={isCardPriceLoading || isCardsSaving}
+                          title="Reload from server"
+                        >
+                          ↺ Refresh
+                        </button>
+                        <button
+                          type="button"
+                          className="action-button primary"
+                          onClick={() => handleSaveList({ mode: 'replace' })}
+                          disabled={isCardPriceLoading || isCardsSaving || uploadedCards.length === 0}
+                        >
+                          {isCardsSaving ? 'Saving…' : 'Save Changes'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Mobile card list — shows names + prices */}
+                    <div className="mobile-card-list desktop-hide">
+                      {savedPairs.map(({ card, index }) => {
+                        const cardKey = String(card.scryfallId || card.resolvedName || card.inputName || index);
+                        return (
+                          <div className="mobile-card-row" key={`${cardKey}-${index}`}>
+                            {card.imageSmall ? (
+                              <img className="mobile-card-thumb" src={card.imageSmall} alt={card.resolvedName || card.inputName} loading="lazy" />
+                            ) : (
+                              <div className="mobile-card-thumb mobile-card-thumb--empty" />
+                            )}
+                            <div className="mobile-card-info">
+                              <span className="mobile-card-name">{card.resolvedName || card.inputName}</span>
+                              <span className="mobile-card-meta">
+                                {card.tcgLow ? <span>TCG {card.tcgLow}</span> : null}
+                                {card.askingPriceCents != null ? <span className="mobile-price-tag mobile-price-tag--ask">Ask ${formatCents(card.askingPriceCents)}</span> : null}
+                                {card.offerPriceCents != null ? <span className="mobile-price-tag mobile-price-tag--offer">Offer ${formatCents(card.offerPriceCents)}</span> : null}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                     {savedPairs.length === 0 ? (
                       <p className="notice subtle">No saved cards yet.</p>
                     ) : (
@@ -3067,59 +3103,86 @@ export default function App() {
                 <div className="card-upload-results matches-section">
                   <h2>Potential Matches</h2>
                   <p className="notice subtle">
-                    Users whose Ask or Offer price on the same card overlaps yours within 20%.
+                    Users whose Ask or Offer price overlaps yours within 20% on the same card.
                   </p>
                   {matchesLoading ? (
                     <p className="notice subtle">Finding matches…</p>
                   ) : cardMatches.length === 0 ? (
                     <p className="notice subtle">
-                      No matches yet. Set an Ask Price (selling) or Offer Price (buying) on your
-                      cards to find users to trade with.
+                      No matches yet — set an Ask Price (to sell) or Offer Price (to buy) on your cards to find trade partners.
                     </p>
                   ) : (
-                    <table className="price-table matches-table desktop-table-only">
-                      <thead>
-                        <tr>
-                          <th>Card</th>
-                          <th>User</th>
-                          <th>My Role</th>
-                          <th>My Price</th>
-                          <th>Their Price</th>
-                          <th>Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                    <>
+                      {/* Mobile match list */}
+                      <div className="desktop-hide mobile-match-list">
                         {cardMatches.map((match, i) => (
-                          <tr key={`${match.username}-${match.cardName}-${i}`}>
-                            <td>{match.cardName}</td>
-                            <td>@{match.username}</td>
-                            <td>{match.myRole === 'buyer' ? 'Buying' : 'Selling'}</td>
-                            <td>
-                              {match.myPriceCents != null
-                                ? `$${formatCents(match.myPriceCents)}`
-                                : '—'}
-                            </td>
-                            <td>
-                              {match.theirPriceCents != null
-                                ? `$${formatCents(match.theirPriceCents)}`
-                                : '—'}
-                            </td>
-                            <td>
-                              <button
-                                type="button"
-                                className="action-button primary"
-                                onClick={() => {
-                                  setComposeRecipient(match.username);
-                                  window.location.hash = '#/messages';
-                                }}
-                              >
-                                Message
-                              </button>
-                            </td>
-                          </tr>
+                          <div className="mobile-match-row" key={`${match.username}-${match.cardName}-${i}`}>
+                            <div className="mobile-match-info">
+                              <span className="mobile-match-card">{match.cardName}</span>
+                              <span className="mobile-match-meta">
+                                @{match.username} · {match.myRole === 'buyer' ? 'You buying' : 'You selling'} ·{' '}
+                                {match.myPriceCents != null ? `Your $${formatCents(match.myPriceCents)}` : ''}{' '}
+                                {match.theirPriceCents != null ? `/ Their $${formatCents(match.theirPriceCents)}` : ''}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              className="action-button primary"
+                              onClick={() => {
+                                setComposeRecipient(match.username);
+                                window.location.hash = '#/messages';
+                              }}
+                            >
+                              Message
+                            </button>
+                          </div>
                         ))}
-                      </tbody>
-                    </table>
+                      </div>
+                      {/* Desktop match table */}
+                      <table className="price-table matches-table desktop-table-only">
+                        <thead>
+                          <tr>
+                            <th>Card</th>
+                            <th>User</th>
+                            <th>My Role</th>
+                            <th>My Price</th>
+                            <th>Their Price</th>
+                            <th>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cardMatches.map((match, i) => (
+                            <tr key={`${match.username}-${match.cardName}-${i}`}>
+                              <td>{match.cardName}</td>
+                              <td>@{match.username}</td>
+                              <td>{match.myRole === 'buyer' ? 'Buying' : 'Selling'}</td>
+                              <td>
+                                {match.myPriceCents != null
+                                  ? `$${formatCents(match.myPriceCents)}`
+                                  : '—'}
+                              </td>
+                              <td>
+                                {match.theirPriceCents != null
+                                  ? `$${formatCents(match.theirPriceCents)}`
+                                  : '—'}
+                              </td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="action-button primary"
+                                  onClick={() => {
+                                    setComposeRecipient(match.username);
+                                    window.location.hash = '#/messages';
+                                  }}
+                                >
+                                  Message
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
                   )}
                 </div>
               </>
