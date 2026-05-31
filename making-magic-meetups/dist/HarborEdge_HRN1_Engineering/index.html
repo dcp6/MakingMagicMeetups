@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow, noarchive" />
+    <title>HarborEdge HRN1 Engineering</title>
+    <style>
+      :root {
+        --bg: #f4f7fb;
+        --ink: #0f2135;
+        --line: rgba(15, 33, 53, 0.15);
+        --panel: #ffffff;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Avenir Next, Segoe UI, Arial, sans-serif;
+        color: var(--ink);
+        background: radial-gradient(circle at 10% -20%, #d8ebff 0%, transparent 45%), var(--bg);
+      }
+      main {
+        width: min(980px, calc(100vw - 2rem));
+        margin: 1.2rem auto 2rem;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 1rem;
+        box-shadow: 0 14px 30px rgba(15, 33, 53, 0.14);
+      }
+      h1 {
+        margin: 0 0 0.65rem;
+        font-size: 1.3rem;
+      }
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        line-height: 1.4;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+    <main>
+      <h1>HarborEdge HRN1 Engineering</h1>
+      <pre>HARBOR RESILIENCE NODE (HRN-1) ENGINEERING DESIGN DOCUMENT
+
+Design Basis: - 200 m³/day seawater RO - 500 kWh LFP battery - 40 kW IT
+compute rack - 30 ft telecom mast - Grid-connected with islanding -
+Harbor seawater intake - 40-ft container integration
+
+  ------------------------------------------------------------
+  1) WATER SYSTEM DESIGN
+  ------------------------------------------------------------
+  2) HIGH-PRESSURE PUMP CALCULATION
+
+  Seawater RO pressure: ~60 bar (6,000 kPa)
+
+  Pump power equation: P = (Q × ΔP) / (η × 1000)
+
+  Where: Q = m³/sec ΔP = Pa η = pump efficiency (assume 0.8)
+
+  Q = 18.52 m³/hr = 0.00514 m³/sec ΔP = 6,000,000 Pa
+
+  P = (0.00514 × 6,000,000) / (0.8 × 1000) P = 30,840 / 800 P
+  ≈ 38.6 kW
+
+  High pressure pump ≈ 40 kW motor
+
+  Energy Recovery Device (ERD): Typical efficiency ~50%
+
+  Actual electrical draw ≈ 20–25 kW continuous
+
+  Daily energy: 25 kW × 24 hr = 600 kWh/day
+
+  Energy per m³: 600 kWh ÷ 200 m³ = 3 kWh/m³
+  ------------------------------------------------------------
+
+3)  MEMBRANE COUNT CALCULATION
+
+Standard seawater membrane: ~6.5 m³/day per element (8” SWRO)
+
+Needed: 200 ÷ 6.5 ≈ 31 elements
+
+Round to: 32 membranes
+
+Configuration: 4 pressure vessels 8 elements per vessel
+
+Total: 4 × 8 = 32 elements
+
+Operating flux: ~15–18 LMH
+
+  ------------------------------------------------------------
+  4) BATTERY DESIGN MATH
+  ------------------------------------------------------------
+  5) ELECTRICAL LOAD SUMMARY
+
+  Normal Operation: RO pump: 25 kW Compute: 40 kW Cooling: 10
+  kW Aux systems: 5 kW
+
+  Total: 80 kW
+
+  Design service size: 100 kW minimum
+
+  At 480V 3-phase:
+
+  P = √3 × V × I × PF
+
+  Assume PF = 0.95
+
+  100,000 = 1.732 × 480 × I × 0.95 100,000 = 789 × I I ≈ 127
+  amps
+
+  Design breaker: 150 A @ 480V 3-phase
+  ------------------------------------------------------------
+
+6)  COMPUTE COOLING CALCULATION
+
+Compute load: 40 kW thermal
+
+Cooling water ΔT = 10°C
+
+ṁ = Q / (cp × ΔT)
+
+Q = 40,000 W cp = 4186 J/kg°C ΔT = 10°C
+
+ṁ = 40,000 / (4186 × 10) = 0.955 kg/sec
+
+≈ 3.4 m³/hr coolant flow
+
+Heat exchanger sizing:
+
+Q = U A ΔT
+
+Assume U = 1200 W/m²K ΔT log mean ≈ 8°C
+
+A = Q / (U × ΔT) = 40,000 / (1200 × 8) = 40,000 / 9600 ≈ 4.17 m²
+
+Plate exchanger ~5 m² area sufficient.
+
+  ------------------------------------------------------------
+  7) STRUCTURAL LOADS
+  ------------------------------------------------------------
+  8) CONCRETE PAD DESIGN
+
+  25 tons = 55,000 lbs
+
+  Container footprint: ~320 sq ft
+
+  Load per sq ft: 55,000 / 320 ≈ 172 psf
+
+  Industrial slab design: 250–400 psf capacity recommended
+
+  Recommendation: 12-inch reinforced concrete pad Rebar grid
+  #5 @ 12” spacing Compacted subgrade
+  ------------------------------------------------------------
+
+9)  TELECOM MAST LOAD
+
+30 ft monopole Wind load (110 mph coastal zone)
+
+Approx lateral load: 1,000–2,000 lbs at top
+
+Foundation: 3 ft diameter 8–10 ft deep Reinforced caisson
+
+  ------------------------------------------------------------
+  10) BRINE DISCHARGE PIPE
+
+  Reject flow: 10.19 m³/hr = 0.00283 m³/sec
+
+  Target velocity: 1.5 m/sec
+
+  Area = Q / V = 0.00283 / 1.5 = 0.00189 m²
+
+  Diameter: D = √(4A/π) = √(0.00756 / 3.1416) = √0.0024 ≈
+  0.049 m ≈ 50 mm
+
+  2-inch brine line sufficient.
+  ------------------------------------------------------------
+
+FINAL ENGINEERING SUMMARY
+
+Product water: 200 m³/day Feed flow: 18.5 m³/hr Pump motor: 40 kW
+Electrical draw: 80 kW nominal Service: 480V 150A Battery: 500 kWh
+Compute: 40 kW Total weight: 25 tons Pad capacity: 250+ psf Brine pipe:
+2-inch</pre>
+    </main>
+    -->
+    <main>
+      <h1>HarborEdge content has been commented out.</h1>
+      <p>This page content is preserved in the source file but not rendered.</p>
+    </main>

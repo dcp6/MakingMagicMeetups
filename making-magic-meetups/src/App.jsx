@@ -2269,10 +2269,15 @@ export default function App() {
         My Cards
       </a>
       {loggedInUser ? (
-        <a className="topbar-link" href="#/messages">
+        <a className="topbar-link topbar-link--with-badge" href="#/messages">
+          Messages
           {(() => {
             const unread = messages.filter((m) => !m.fromMe && !m.readAt).length;
-            return unread > 0 ? `Messages (${unread})` : 'Messages';
+            return unread > 0 ? (
+              <span className="topbar-unread-badge" aria-label={`${unread} unread`}>
+                {unread > 99 ? '99+' : unread}
+              </span>
+            ) : null;
           })()}
         </a>
       ) : null}
