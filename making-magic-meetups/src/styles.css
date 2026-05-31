@@ -821,6 +821,45 @@ h1 {
   flex-shrink: 0;
 }
 
+/* ── My Cards name filter ── */
+.my-cards-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.my-cards-search {
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.9);
+  padding: 0.3rem 0.75rem;
+  font-size: 0.82rem;
+  color: var(--text-900);
+  width: 170px;
+  transition: border-color 0.15s, width 0.2s;
+  outline: none;
+}
+
+.my-cards-search:focus {
+  border-color: var(--mint-400);
+  width: 210px;
+}
+
+.my-cards-search::placeholder {
+  color: #94a3b8;
+}
+
+/* Hide the native ✕ button — we show a count instead */
+.my-cards-search::-webkit-search-cancel-button { display: none; }
+
+.my-cards-search-count {
+  margin-left: 0.45rem;
+  font-size: 0.75rem;
+  color: var(--text-700);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Stat chips ── */
 .stats-chips {
   display: flex;

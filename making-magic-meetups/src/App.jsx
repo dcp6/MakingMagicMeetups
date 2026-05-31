@@ -178,6 +178,8 @@ export default function App() {
   const [matchesLoading, setMatchesLoading] = useState(false);
   // Price Matches dashboard filter
   const [priceMatchFilter, setPriceMatchFilter] = useState('all');
+  // My Cards name filter
+  const [myCardsFilter, setMyCardsFilter] = useState('');
   // Great Offers (home page)
   const [greatOffers, setGreatOffers] = useState([]);
   const [greatOffersLoading, setGreatOffersLoading] = useState(false);
@@ -2778,7 +2780,15 @@ export default function App() {
                 ) : null}
 
                 {/* ── My Cards section — hidden while add-form is open so preview doesn't pollute it ── */}
-                {!showAddForm && uploadedCards.length > 0 ? (
+                {!showAddForm && uploadedCards.length > 0 ? (() => {
+                  const filterLc = myCardsFilter.trim().toLowerCase();
+                  const filteredSavedPairs = filterLc
+                    ? savedPairs.filter(({ card }) =>
+                        (card.resolvedName || card.inputName || '').toLowerCase().includes(filterLc)
+                      )
+                    : savedPairs;
+
+                  return (
                   <div className="card-upload-results">
                     <div className="section-header-row">
                       <div>
@@ -2790,6 +2800,21 @@ export default function App() {
                         </div>
                       </div>
                       <div className="section-actions">
+                        <div className="my-cards-search-wrap">
+                          <input
+                            type="search"
+                            className="my-cards-search"
+                            placeholder="Filter by name…"
+                            value={myCardsFilter}
+                            onChange={(e) => setMyCardsFilter(e.target.value)}
+                            aria-label="Filter cards by name"
+                          />
+                          {myCardsFilter ? (
+                            <span className="my-cards-search-count">
+                              {filteredSavedPairs.length} / {savedPairs.length}
+                            </span>
+                          ) : null}
+                        </div>
                         <label className="sort-control">
                           <span className="sort-label sr-only">Sort by</span>
                           <select
@@ -2823,9 +2848,13 @@ export default function App() {
                       </div>
                     </div>
 
+                    {filteredSavedPairs.length === 0 && filterLc ? (
+                      <p className="notice subtle">No cards match &ldquo;{myCardsFilter}&rdquo;.</p>
+                    ) : null}
+
                     {/* Mobile card list — shows names + prices */}
                     <div className="mobile-card-list desktop-hide">
-                      {savedPairs.map(({ card, index }) => {
+                      {filteredSavedPairs.map(({ card, index }) => {
                         const cardKey = String(card.scryfallId || card.resolvedName || card.inputName || index);
                         return (
                           <div className="mobile-card-row" key={`${cardKey}-${index}`}>
@@ -2873,7 +2902,7 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {savedPairs.map(({ card, index }) => {
+                          {filteredSavedPairs.map(({ card, index }) => {
                             const cardKey = String(card.id != null ? card.id : (
                               card.scryfallId ||
                                 String(card.resolvedName || card.inputName || '').trim()
@@ -3008,7 +3037,8 @@ export default function App() {
                       </table>
                     )}
                   </div>
-                ) : (
+                  );
+                })() : (
                   !showAddForm ? <p>No saved cards yet.</p> : null
                 )}
 
