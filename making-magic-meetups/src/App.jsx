@@ -732,7 +732,9 @@ export default function App() {
                 address: store.address || null,
                 url: store.url || null,
                 website: store.website || null,
-                phone: store.phone || null
+                phone: store.phone || null,
+                latitude: Number.isFinite(Number(store.latitude)) ? Number(store.latitude) : null,
+                longitude: Number.isFinite(Number(store.longitude)) ? Number(store.longitude) : null
               }
             : { placeId: null }
         )
@@ -745,8 +747,13 @@ export default function App() {
       const mergedPreferredStore = payload.preferredStore
         ? {
             ...payload.preferredStore,
-            latitude: Number.isFinite(Number(store?.latitude)) ? Number(store.latitude) : null,
-            longitude: Number.isFinite(Number(store?.longitude)) ? Number(store.longitude) : null
+            // prefer server-returned coords; fall back to local store object
+            latitude: payload.preferredStore.latitude != null
+              ? Number(payload.preferredStore.latitude)
+              : Number.isFinite(Number(store?.latitude)) ? Number(store.latitude) : null,
+            longitude: payload.preferredStore.longitude != null
+              ? Number(payload.preferredStore.longitude)
+              : Number.isFinite(Number(store?.longitude)) ? Number(store.longitude) : null
           }
         : null;
       setPreferredStore(mergedPreferredStore);
@@ -3228,6 +3235,7 @@ export default function App() {
                   <h2>Potential Matches</h2>
                   <p className="notice subtle">
                     Users whose Ask or Offer price overlaps yours within 20% on the same card.
+                    {preferredStore ? ' 📍 Near your store matches appear first.' : ''}
                   </p>
                   {matchesLoading ? (
                     <p className="notice subtle">Finding matches…</p>
@@ -3240,9 +3248,12 @@ export default function App() {
                       {/* Mobile match list */}
                       <div className="desktop-hide mobile-match-list">
                         {cardMatches.map((match, i) => (
-                          <div className="mobile-match-row" key={`${match.username}-${match.cardName}-${i}`}>
+                          <div className={`mobile-match-row${match.nearStore ? ' mobile-match-row--near' : ''}`} key={`${match.username}-${match.cardName}-${i}`}>
                             <div className="mobile-match-info">
-                              <span className="mobile-match-card">{match.cardName}</span>
+                              <span className="mobile-match-card">
+                                {match.cardName}
+                                {match.nearStore ? <span className="near-store-badge" title={match.distanceMiles != null ? `~${match.distanceMiles} mi from your store` : 'Near your store'}>📍 {match.distanceMiles != null ? `${match.distanceMiles} mi` : 'Nearby'}</span> : null}
+                              </span>
                               <span className="mobile-match-meta">
                                 @{match.username} · {match.myRole === 'buyer' ? 'You buying' : 'You selling'} ·{' '}
                                 {match.myPriceCents != null ? `Your $${formatCents(match.myPriceCents)}` : ''}{' '}
@@ -3271,12 +3282,13 @@ export default function App() {
                             <th>My Role</th>
                             <th>My Price</th>
                             <th>Their Price</th>
+                            {preferredStore ? <th>Location</th> : null}
                             <th>Action</th>
                           </tr>
                         </thead>
                         <tbody>
                           {cardMatches.map((match, i) => (
-                            <tr key={`${match.username}-${match.cardName}-${i}`}>
+                            <tr key={`${match.username}-${match.cardName}-${i}`} className={match.nearStore ? 'match-row--near' : ''}>
                               <td>{match.cardName}</td>
                               <td>@{match.username}</td>
                               <td>{match.myRole === 'buyer' ? 'Buying' : 'Selling'}</td>
@@ -3290,6 +3302,19 @@ export default function App() {
                                   ? `$${formatCents(match.theirPriceCents)}`
                                   : '—'}
                               </td>
+                              {preferredStore ? (
+                                <td>
+                                  {match.nearStore ? (
+                                    <span className="near-store-badge" title={match.distanceMiles != null ? `~${match.distanceMiles} mi from your store` : 'Near your store'}>
+                                      📍 {match.distanceMiles != null ? `${match.distanceMiles} mi` : 'Nearby'}
+                                    </span>
+                                  ) : (
+                                    <span className="far-store-label">
+                                      {match.distanceMiles != null ? `${match.distanceMiles} mi` : '—'}
+                                    </span>
+                                  )}
+                                </td>
+                              ) : null}
                               <td>
                                 <button
                                   type="button"

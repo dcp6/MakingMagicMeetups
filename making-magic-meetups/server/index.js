@@ -138,7 +138,9 @@ for (const column of [
   'preferred_store_address TEXT',
   'preferred_store_url TEXT',
   'preferred_store_website TEXT',
-  'preferred_store_phone TEXT'
+  'preferred_store_phone TEXT',
+  'preferred_store_latitude REAL',
+  'preferred_store_longitude REAL'
 ]) {
   try {
     db.exec(`ALTER TABLE accounts ADD COLUMN ${column}`);
@@ -281,7 +283,9 @@ const updatePreferredStore = db.prepare(`
       preferred_store_address = ?,
       preferred_store_url = ?,
       preferred_store_website = ?,
-      preferred_store_phone = ?
+      preferred_store_phone = ?,
+      preferred_store_latitude = ?,
+      preferred_store_longitude = ?
   WHERE id = ?
 `);
 
@@ -637,8 +641,13 @@ const findMatchesSqlite = db.prepare(`
     CASE WHEN mc_me.offer_price_cents IS NOT NULL
          THEN mc_other.asking_price_cents
          ELSE mc_other.offer_price_cents
-    END AS their_price_cents
+    END AS their_price_cents,
+    me.preferred_store_latitude AS my_store_lat,
+    me.preferred_store_longitude AS my_store_lng,
+    other.preferred_store_latitude AS their_store_lat,
+    other.preferred_store_longitude AS their_store_lng
   FROM my_cards mc_me
+  JOIN accounts me ON me.id = mc_me.account_id
   JOIN my_cards mc_other
     ON LOWER(TRIM(mc_other.card_name)) = LOWER(TRIM(mc_me.card_name))
     AND mc_other.account_id != mc_me.account_id
@@ -1072,9 +1081,23 @@ async function findAccountByIdRuntime(accountId) {
   return rows[0] || null;
 }
 
-async function updatePreferredStoreRuntime(placeId, name, address, url, website, phone, accountId) {
+function haversineMiles(lat1, lng1, lat2, lng2) {
+  if (lat1 == null || lng1 == null || lat2 == null || lng2 == null) return null;
+  const R = 3958.8;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.asin(Math.sqrt(a));
+}
+
+async function updatePreferredStoreRuntime(placeId, name, address, url, website, phone, latitude, longitude, accountId) {
+  const lat = Number.isFinite(Number(latitude)) ? Number(latitude) : null;
+  const lng = Number.isFinite(Number(longitude)) ? Number(longitude) : null;
   if (!usePostgresRuntime) {
-    updatePreferredStore.run(placeId, name, address, url, website, phone, accountId);
+    updatePreferredStore.run(placeId, name, address, url, website, phone, lat, lng, accountId);
     return;
   }
   await pgQuery(
@@ -1085,10 +1108,12 @@ async function updatePreferredStoreRuntime(placeId, name, address, url, website,
           preferred_store_address = $3,
           preferred_store_url = $4,
           preferred_store_website = $5,
-          preferred_store_phone = $6
-      WHERE id = $7
+          preferred_store_phone = $6,
+          preferred_store_latitude = $7,
+          preferred_store_longitude = $8
+      WHERE id = $9
     `,
-    [placeId, name, address, url, website, phone, accountId]
+    [placeId, name, address, url, website, phone, lat, lng, accountId]
   );
 }
 
@@ -1534,9 +1559,31 @@ async function searchAccountsRuntime(query, excludeId) {
   return rows;
 }
 
+function applyStoreProximity(rows) {
+  const NEAR_MILES = 50;
+  return rows
+    .map((row) => {
+      const dist = haversineMiles(
+        row.my_store_lat ?? row.my_store_lat,
+        row.my_store_lng ?? row.my_store_lng,
+        row.their_store_lat,
+        row.their_store_lng
+      );
+      return { ...row, distance_miles: dist };
+    })
+    .sort((a, b) => {
+      const aNear = a.distance_miles !== null && a.distance_miles <= NEAR_MILES;
+      const bNear = b.distance_miles !== null && b.distance_miles <= NEAR_MILES;
+      if (aNear !== bNear) return aNear ? -1 : 1;
+      const aName = String(a.card_name || '').toLowerCase();
+      const bName = String(b.card_name || '').toLowerCase();
+      return aName < bName ? -1 : aName > bName ? 1 : 0;
+    });
+}
+
 async function findMatchesRuntime(accountId) {
   if (!usePostgresRuntime) {
-    return findMatchesSqlite.all(accountId);
+    return applyStoreProximity(findMatchesSqlite.all(accountId));
   }
   const { rows } = await pgQuery(
     `SELECT
@@ -1550,8 +1597,13 @@ async function findMatchesRuntime(accountId) {
        CASE WHEN mc_me.offer_price_cents IS NOT NULL
             THEN mc_other.asking_price_cents
             ELSE mc_other.offer_price_cents
-       END AS their_price_cents
+       END AS their_price_cents,
+       me.preferred_store_latitude AS my_store_lat,
+       me.preferred_store_longitude AS my_store_lng,
+       other.preferred_store_latitude AS their_store_lat,
+       other.preferred_store_longitude AS their_store_lng
      FROM my_cards mc_me
+     JOIN accounts me ON me.id = mc_me.account_id
      JOIN my_cards mc_other
        ON LOWER(TRIM(mc_other.card_name)) = LOWER(TRIM(mc_me.card_name))
        AND mc_other.account_id != mc_me.account_id
@@ -1569,7 +1621,7 @@ async function findMatchesRuntime(accountId) {
      ORDER BY LOWER(mc_me.card_name) ASC`,
     [accountId]
   );
-  return rows;
+  return applyStoreProximity(rows);
 }
 
 // ── End messages runtime ─────────────────────────────────────────────────────
@@ -1877,7 +1929,7 @@ app.patch('/api/me/preferred-store', async (req, res) => {
   const placeId = placeIdRaw ? placeIdRaw : null;
 
   if (!placeId) {
-    await updatePreferredStoreRuntime(null, null, null, null, null, null, user.id);
+    await updatePreferredStoreRuntime(null, null, null, null, null, null, null, null, user.id);
     const account = await findAccountByIdRuntime(user.id);
     return res.json({
       ok: true,
@@ -1897,9 +1949,11 @@ app.patch('/api/me/preferred-store', async (req, res) => {
   const url = String(req.body?.url || '').trim() || null;
   const website = String(req.body?.website || '').trim() || null;
   const phone = String(req.body?.phone || '').trim() || null;
+  const latitude = req.body?.latitude != null ? Number(req.body.latitude) : null;
+  const longitude = req.body?.longitude != null ? Number(req.body.longitude) : null;
 
   try {
-    await updatePreferredStoreRuntime(placeId, name, address, url, website, phone, user.id);
+    await updatePreferredStoreRuntime(placeId, name, address, url, website, phone, latitude, longitude, user.id);
 
     const account = await findAccountByIdRuntime(user.id);
     return res.json({
@@ -1910,7 +1964,9 @@ app.patch('/api/me/preferred-store', async (req, res) => {
         address: account.preferred_store_address || null,
         url: account.preferred_store_url || null,
         website: account.preferred_store_website || null,
-        phone: account.preferred_store_phone || null
+        phone: account.preferred_store_phone || null,
+        latitude: account.preferred_store_latitude != null ? Number(account.preferred_store_latitude) : null,
+        longitude: account.preferred_store_longitude != null ? Number(account.preferred_store_longitude) : null
       }
     });
   } catch (_error) {
@@ -2737,13 +2793,18 @@ app.get('/api/matches', async (req, res) => {
   if (!user || user.role !== 'user') return res.status(401).json({ error: 'Unauthorized.' });
 
   const rows = await findMatchesRuntime(Number(user.id));
-  const matches = rows.map((row) => ({
-    cardName: row.card_name,
-    username: row.username,
-    myRole: row.my_role,
-    myPriceCents: row.my_price_cents === null ? null : Number(row.my_price_cents),
-    theirPriceCents: row.their_price_cents === null ? null : Number(row.their_price_cents)
-  }));
+  const matches = rows.map((row) => {
+    const dist = row.distance_miles != null ? Math.round(row.distance_miles) : null;
+    return {
+      cardName: row.card_name,
+      username: row.username,
+      myRole: row.my_role,
+      myPriceCents: row.my_price_cents === null ? null : Number(row.my_price_cents),
+      theirPriceCents: row.their_price_cents === null ? null : Number(row.their_price_cents),
+      nearStore: dist !== null && dist <= 50,
+      distanceMiles: dist
+    };
+  });
   return res.json({ matches });
 });
 

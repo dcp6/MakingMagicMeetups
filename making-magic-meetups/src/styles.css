@@ -1047,6 +1047,35 @@ h1 {
   cursor: help;
 }
 
+/* ── Near-store match indicators ── */
+.near-store-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  background: #ecfdf5;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.1rem 0.45rem;
+  white-space: nowrap;
+}
+
+.far-store-label {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.match-row--near {
+  background: #f0fdf4 !important;
+}
+
+.mobile-match-row--near {
+  border-left: 3px solid #22c55e;
+  background: #f0fdf4;
+}
+
 /* Condition select in table */
 .condition-select {
   font-size: 0.82rem;
