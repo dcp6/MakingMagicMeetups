@@ -979,6 +979,20 @@ h1 {
   min-width: 54px;
 }
 
+/* NM reference price shown below a condition-adjusted price in the desktop table */
+.nm-price-ref {
+  font-size: 0.70rem;
+  color: #94a3b8;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+/* Inline NM reference in the mobile card list */
+.nm-price-ref-inline {
+  font-size: 0.78em;
+  color: #94a3b8;
+}
+
 /* ── Mobile match list ── */
 .mobile-match-list {
   display: flex;

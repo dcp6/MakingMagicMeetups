@@ -31,6 +31,14 @@ const apiBaseStorageKey = 'making_magic_meetups_api_base_v1';
 const storeSearchCacheStorageKey = 'making_magic_meetups_store_search_cache_v1';
 const storeSearchCacheTtlMs = 15 * 60 * 1000;
 
+// Standard TCGPlayer condition grade multipliers relative to Near Mint (NM = 1.0).
+// These are widely-accepted community approximations; actual prices vary by card.
+const CONDITION_MULTIPLIERS = { nm: 1.0, lp: 0.80, mp: 0.64, hp: 0.40, dmg: 0.25 };
+
+function getConditionMultiplier(condition) {
+  return CONDITION_MULTIPLIERS[String(condition || '').toLowerCase()] ?? 1.0;
+}
+
 const events = [
   {
     title: "Starlight Story Circle",
@@ -1426,7 +1434,11 @@ export default function App() {
         Number.isFinite(incomingAskingQuantity) && incomingAskingQuantity >= 0
           ? Math.max(0, Math.floor(incomingAskingQuantity))
           : quantity;
-      const unitUsd = parseUsdPrice(priced.tcgLow);
+      const nmUsd = parseUsdPrice(priced.tcgLow);
+      const nmPriceDisplay = priced.tcgLow || 'N/A';
+      const condMult = getConditionMultiplier(entries[index]?.condition);
+      const unitUsd = nmUsd !== null ? nmUsd * condMult : null;
+      const tcgLow = unitUsd !== null ? `$${unitUsd.toFixed(2)}` : nmPriceDisplay;
       const scryfallId = priced.scryfallId ?? entries[index]?.scryfallId ?? null;
       const askingPriceCents = entries[index]?.askingPriceCents ?? null;
       const offerPriceCents = entries[index]?.offerPriceCents ?? null;
@@ -1445,6 +1457,9 @@ export default function App() {
 
       return {
         ...priced,
+        tcgLow,           // condition-adjusted price display (overrides NM from Scryfall)
+        nmUsd,            // raw NM price number, kept for live recalc when condition changes
+        nmPriceDisplay,   // raw NM price string, e.g. "$3.26", for reference display
         quantity,
         requesting,
         marketStatus,
@@ -1865,7 +1880,20 @@ export default function App() {
 
   function handleConditionChange(index, nextValue) {
     setUploadedCards((previous) =>
-      previous.map((card, i) => (i === index ? { ...card, condition: nextValue || null } : card))
+      previous.map((card, i) => {
+        if (i !== index) return card;
+        const mult = getConditionMultiplier(nextValue);
+        const nmUsd = card.nmUsd ?? null;
+        const unitUsd = nmUsd !== null ? nmUsd * mult : null;
+        const tcgLow = unitUsd !== null ? `$${unitUsd.toFixed(2)}` : (card.nmPriceDisplay || 'N/A');
+        return {
+          ...card,
+          condition: nextValue || null,
+          unitUsd,
+          tcgLow,
+          lineTotalUsd: unitUsd !== null ? unitUsd * card.quantity : null
+        };
+      })
     );
   }
 
@@ -1952,11 +1980,18 @@ export default function App() {
         if (i !== index) {
           return row;
         }
-        const unitUsd = parseUsdPrice(refreshed.tcgLow);
+        const nmUsd = parseUsdPrice(refreshed.tcgLow);
+        const nmPriceDisplay = refreshed.tcgLow || 'N/A';
+        const mult = getConditionMultiplier(row.condition);
+        const unitUsd = nmUsd !== null ? nmUsd * mult : null;
+        const tcgLow = unitUsd !== null ? `$${unitUsd.toFixed(2)}` : nmPriceDisplay;
         const lineTotalUsd = unitUsd !== null ? unitUsd * row.quantity : null;
         return {
           ...row,
           ...refreshed,
+          tcgLow,
+          nmUsd,
+          nmPriceDisplay,
           scryfallId: refreshed.scryfallId || scryfallId,
           setCode: refreshed.setCode || row.setCode || null,
           setName: refreshed.setName || row.setName || null,
@@ -2953,7 +2988,14 @@ export default function App() {
                             <div className="mobile-card-info">
                               <span className="mobile-card-name">{card.resolvedName || card.inputName}</span>
                               <span className="mobile-card-meta">
-                                {card.tcgLow ? <span>TCG {card.tcgLow}</span> : null}
+                                {card.tcgLow ? (
+                                  <span>
+                                    TCG {card.tcgLow}
+                                    {card.condition && card.condition !== 'nm' && card.nmPriceDisplay && card.nmPriceDisplay !== 'N/A' ? (
+                                      <span className="nm-price-ref-inline"> (NM {card.nmPriceDisplay})</span>
+                                    ) : null}
+                                  </span>
+                                ) : null}
                                 {card.condition ? <span className="mobile-price-tag mobile-price-tag--condition">{card.condition.toUpperCase()}</span> : null}
                                 {card.askingPriceCents != null ? <span className="mobile-price-tag mobile-price-tag--ask">Ask ${formatCents(card.askingPriceCents)}</span> : null}
                                 {card.offerPriceCents != null ? <span className="mobile-price-tag mobile-price-tag--offer">Offer ${formatCents(card.offerPriceCents)}</span> : null}
@@ -3029,6 +3071,9 @@ export default function App() {
                                   ) : (
                                     card.tcgLow || 'N/A'
                                   )}
+                                  {card.condition && card.condition !== 'nm' && card.nmPriceDisplay && card.nmPriceDisplay !== 'N/A' ? (
+                                    <div className="nm-price-ref" title="Near Mint reference price">NM {card.nmPriceDisplay}</div>
+                                  ) : null}
                                 </td>
                                 <td>
                                   <input
