@@ -6,7 +6,6 @@ import {
   buildMyCardsTableModel,
   sortCardsWithIndex
 } from './tableLogic';
-import { runStoreSearch } from './storeSearchLogic';
 
 const canonicalApiBaseUrl = 'https://makingmagicmeetups-1.onrender.com';
 const legacyApiBaseUrls = new Set([
@@ -28,8 +27,6 @@ function normalizeApiBaseUrl(value) {
 const configuredApiBaseUrl = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL || '');
 const sessionStorageKey = 'making_magic_meetups_session_v1';
 const apiBaseStorageKey = 'making_magic_meetups_api_base_v1';
-const storeSearchCacheStorageKey = 'making_magic_meetups_store_search_cache_v1';
-const storeSearchCacheTtlMs = 15 * 60 * 1000;
 
 // Standard TCGPlayer condition grade multipliers relative to Near Mint (NM = 1.0).
 // These are widely-accepted community approximations; actual prices vary by card.
@@ -153,22 +150,11 @@ export default function App() {
   const [settingsResetFeedback, setSettingsResetFeedback] = useState('');
   const [isSettingsResetSubmitting, setIsSettingsResetSubmitting] = useState(false);
   const [preferredStore, setPreferredStore] = useState(null);
-  const [storeSearchQuery, setStoreSearchQuery] = useState('');
-  const [storeSearchResults, setStoreSearchResults] = useState([]);
-  const [storeSearchFeedback, setStoreSearchFeedback] = useState('');
-  const [isStoreSearching, setIsStoreSearching] = useState(false);
+  const [citySearchQuery, setCitySearchQuery] = useState('');
+  const [citySearchResults, setCitySearchResults] = useState([]);
+  const [citySearchFeedback, setCitySearchFeedback] = useState('');
+  const [isCitySearching, setIsCitySearching] = useState(false);
   const [isPreferredStoreSaving, setIsPreferredStoreSaving] = useState(false);
-  const [isMapKitReady, setIsMapKitReady] = useState(false);
-  const [storeLocationOptions, setStoreLocationOptions] = useState([]);
-  const [selectedStoreLocation, setSelectedStoreLocation] = useState('');
-  const [selectedStoreCoordinate, setSelectedStoreCoordinate] = useState(null);
-  const storeMapContainerRef = useRef(null);
-  const storeMapRef = useRef(null);
-  const storeMapMarkerRef = useRef(null);
-  const dashboardResultMapContainerRef = useRef(null);
-  const dashboardResultMapRef = useRef(null);
-  const dashboardResultMapMarkerRef = useRef(null);
-  const [selectedResultStore, setSelectedResultStore] = useState(null);
   const [dashboardMobileSelectedCardKey, setDashboardMobileSelectedCardKey] = useState('');
   const [savedMobileSelectedCardKey, setSavedMobileSelectedCardKey] = useState('');
   const [requestingMobileSelectedCardKey, setRequestingMobileSelectedCardKey] = useState('');
@@ -396,323 +382,72 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route, loggedInUser, loginAuthHeader, apiBaseUrl]);
 
-  useEffect(() => {
-    if (route !== 'settings' && route !== 'dashboard') {
-      return;
+  function buildCityLabel(r) {
+    const addr = r.address || {};
+    const name = addr.city || addr.town || addr.village || addr.hamlet || addr.municipality || addr.borough || r.name;
+    const countryCode = (addr.country_code || '').toUpperCase();
+    if (countryCode === 'US') {
+      const stateAbbr = (addr['ISO3166-2-lvl4'] || '').replace(/^US-/, '') || addr.state || '';
+      return [name, stateAbbr].filter(Boolean).join(', ');
     }
+    const region = addr.state || addr.county || '';
+    return [name, region, countryCode].filter((p) => p).join(', ');
+  }
 
-    const mapkit = window.mapkit;
-    if (!mapkit) {
-      setIsMapKitReady(false);
-      setStoreSearchFeedback('MapKit JS failed to load.');
-      return;
-    }
-
-    // If already initialized successfully, mark ready and return.
-    if (window.__makingMagicMapKitInited) {
-      setIsMapKitReady(true);
-      return;
-    }
-
-    // Pre-flight: verify the token endpoint works before initializing MapKit.
-    (async () => {
-      try {
-        const response = await fetch(`${apiBaseUrl}/api/mapkit/token`);
-        const payload = await response.json().catch(() => ({}));
-        if (!payload.token) {
-          setIsMapKitReady(false);
-          setStoreSearchFeedback(
-            payload.error
-              ? `Store search unavailable: ${payload.error}`
-              : 'Store search unavailable: MapKit not configured on this server.'
-          );
-          return;
-        }
-        window.__makingMagicMapKitInited = true;
-        mapkit.init({
-          authorizationCallback(done) {
-            fetch(`${apiBaseUrl}/api/mapkit/token`)
-              .then((r) => r.json())
-              .then((p) => done(p.token || ''))
-              .catch(() => done(''));
-          }
-        });
-        setIsMapKitReady(true);
-      } catch (_error) {
-        setIsMapKitReady(false);
-        setStoreSearchFeedback('Could not reach MapKit token service. Store search unavailable.');
-      }
-    })();
-  }, [route, loggedInUser, apiBaseUrl]);
-
-  useEffect(() => {
-    if (route !== 'settings' || !preferredStore) {
-      setSelectedStoreCoordinate(null);
-      return;
-    }
-
-    const latitude = Number(preferredStore.latitude);
-    const longitude = Number(preferredStore.longitude);
-    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-      setSelectedStoreCoordinate({ latitude, longitude });
-      return;
-    }
-
-    if (!window.mapkit || !isMapKitReady) {
-      return;
-    }
-
-    const lookupQuery = [preferredStore.name, preferredStore.address].filter(Boolean).join(' ').trim();
-    if (!lookupQuery) {
-      setSelectedStoreCoordinate(null);
-      return;
-    }
-
-    const search = new window.mapkit.Search();
-    search.search(lookupQuery, (error, response) => {
-      if (error) {
-        setSelectedStoreCoordinate(null);
-        return;
-      }
-      const firstPlace = Array.isArray(response?.places) ? response.places[0] : null;
-      const lat = Number(firstPlace?.coordinate?.latitude);
-      const lng = Number(firstPlace?.coordinate?.longitude);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        setSelectedStoreCoordinate({ latitude: lat, longitude: lng });
-        return;
-      }
-      setSelectedStoreCoordinate(null);
-    });
-  }, [route, preferredStore, isMapKitReady]);
-
-  useEffect(() => {
-    if (route !== 'settings' || !isMapKitReady || !selectedStoreCoordinate || !storeMapContainerRef.current) {
-      return;
-    }
-    if (!window.mapkit) {
-      return;
-    }
-
-    const coordinate = new window.mapkit.Coordinate(
-      selectedStoreCoordinate.latitude,
-      selectedStoreCoordinate.longitude
-    );
-    const region = new window.mapkit.CoordinateRegion(
-      coordinate,
-      new window.mapkit.CoordinateSpan(0.03, 0.03)
-    );
-
-    if (!storeMapRef.current) {
-      storeMapRef.current = new window.mapkit.Map(storeMapContainerRef.current, {
-        showsCompass: window.mapkit.FeatureVisibility.Hidden,
-        showsZoomControl: true,
-        isRotationEnabled: false,
-        isScrollEnabled: true
-      });
-    }
-
-    const map = storeMapRef.current;
-    map.region = region;
-
-    if (storeMapMarkerRef.current) {
-      map.removeAnnotation(storeMapMarkerRef.current);
-    }
-
-    const marker = new window.mapkit.MarkerAnnotation(coordinate, {
-      title: preferredStore?.name || 'Preferred store',
-      subtitle: preferredStore?.address || ''
-    });
-    map.addAnnotation(marker);
-    storeMapMarkerRef.current = marker;
-  }, [route, isMapKitReady, selectedStoreCoordinate, preferredStore]);
-
-  useEffect(() => {
-    if (route !== 'dashboard' || !isMapKitReady || !selectedResultStore) {
-      return;
-    }
-    const latitude = Number(selectedResultStore.latitude);
-    const longitude = Number(selectedResultStore.longitude);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-      return;
-    }
-    if (!dashboardResultMapContainerRef.current) {
-      return;
-    }
-
-    const coordinate = new window.mapkit.Coordinate(latitude, longitude);
-    const region = new window.mapkit.CoordinateRegion(
-      coordinate,
-      new window.mapkit.CoordinateSpan(0.02, 0.02)
-    );
-
-    if (!dashboardResultMapRef.current) {
-      dashboardResultMapRef.current = new window.mapkit.Map(dashboardResultMapContainerRef.current, {
-        showsCompass: window.mapkit.FeatureVisibility.Hidden,
-        showsZoomControl: true,
-        isRotationEnabled: false,
-        isScrollEnabled: true
-      });
-    }
-
-    const map = dashboardResultMapRef.current;
-    map.region = region;
-
-    if (dashboardResultMapMarkerRef.current) {
-      map.removeAnnotation(dashboardResultMapMarkerRef.current);
-    }
-
-    const marker = new window.mapkit.MarkerAnnotation(coordinate, {
-      title: selectedResultStore.name || 'Store',
-      subtitle: selectedResultStore.address || ''
-    });
-    map.addAnnotation(marker);
-    dashboardResultMapMarkerRef.current = marker;
-  }, [route, isMapKitReady, selectedResultStore]);
-
-  async function handleStoreSearch(event) {
+  async function handleCitySearch(event) {
     event.preventDefault();
-    setStoreSearchFeedback('');
+    setCitySearchFeedback('');
+    setCitySearchResults([]);
 
-    const query = storeSearchQuery.trim();
+    const query = citySearchQuery.trim();
     if (!query) {
-      setStoreSearchFeedback('Enter a store name or city to search.');
+      setCitySearchFeedback('Enter a city or town name.');
       return;
     }
 
-    if (!window.mapkit || !isMapKitReady) {
-      setStoreSearchFeedback('MapKit is not ready yet.');
-      return;
-    }
-
-    const cacheKey = `${query.toLowerCase()}|${String(selectedStoreLocation || '')
-      .trim()
-      .toLowerCase()}`;
+    setIsCitySearching(true);
     try {
-      const rawCache = window.localStorage.getItem(storeSearchCacheStorageKey);
-      if (rawCache) {
-        const parsedCache = JSON.parse(rawCache);
-        const cachedEntry = parsedCache?.[cacheKey];
-        if (
-          cachedEntry &&
-          Number.isFinite(cachedEntry.savedAt) &&
-          Date.now() - cachedEntry.savedAt <= storeSearchCacheTtlMs
-        ) {
-          setStoreLocationOptions(Array.isArray(cachedEntry.locationOptions) ? cachedEntry.locationOptions : []);
-          setSelectedStoreLocation(String(cachedEntry.effectiveSelectedLocation || ''));
-          setStoreSearchResults(Array.isArray(cachedEntry.stores) ? cachedEntry.stores : []);
-          setStoreSearchFeedback(
-            cachedEntry.feedback
-              ? `${cachedEntry.feedback} (cached, refreshing...)`
-              : 'Loaded cached results (refreshing...)'
-          );
-        }
+      const url =
+        `https://nominatim.openstreetmap.org/search` +
+        `?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=10&accept-language=en`;
+      const resp = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+      if (!resp.ok) throw new Error('lookup failed');
+      const data = await resp.json();
+
+      const cityTypes = new Set([
+        'city', 'town', 'village', 'hamlet', 'municipality',
+        'borough', 'suburb', 'quarter', 'neighbourhood'
+      ]);
+      const results = data
+        .filter((r) => r.class === 'place' && cityTypes.has(r.type))
+        .map((r) => ({
+          placeId: String(r.place_id),
+          name: buildCityLabel(r),
+          latitude: Number(r.lat),
+          longitude: Number(r.lon)
+        }));
+
+      if (results.length === 0) {
+        setCitySearchFeedback('No cities found. Try a different spelling or include a country name.');
+      } else {
+        setCitySearchResults(results);
       }
-    } catch (_error) {
-      // Ignore cache parse/storage errors and continue with live search.
-    }
-
-    async function searchMapkitPlaces(searchText, { coordinate } = {}) {
-      // Pass the coordinate as a hint so MapKit anchors results to the
-      // searched city rather than the user's device location.
-      const searchOptions = {};
-      if (coordinate && Number.isFinite(coordinate.latitude) && Number.isFinite(coordinate.longitude)) {
-        searchOptions.coordinate = new window.mapkit.Coordinate(
-          coordinate.latitude,
-          coordinate.longitude
-        );
-      }
-      const search = new window.mapkit.Search(searchOptions);
-      const data = await new Promise((resolve, reject) => {
-        search.search(searchText, (error, response) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-          resolve(response);
-        });
-      });
-      return Array.isArray(data?.places) ? data.places : [];
-    }
-
-    setIsStoreSearching(true);
-    try {
-      /* Foursquare search — commented out until API key is configured
-      const fsqResponse = await fetch(
-        `${apiBaseUrl}/api/stores/search?near=${encodeURIComponent(query)}`
-      ).catch(() => null);
-
-      if (fsqResponse && fsqResponse.ok) {
-        const fsqData = await fsqResponse.json().catch(() => null);
-        if (fsqData?.stores?.length) {
-          setStoreLocationOptions([]);
-          setSelectedStoreLocation('');
-          setStoreSearchResults(fsqData.stores);
-          setSelectedResultStore(fsqData.stores[0]);
-          setStoreSearchFeedback('');
-          return;
-        }
-        if (fsqData?.stores?.length === 0) {
-          setStoreSearchResults([]);
-          setSelectedResultStore(null);
-          setStoreSearchFeedback('No gaming stores found for that search. Try a different city or store name.');
-          return;
-        }
-      }
-      */
-
-      // MapKit search.
-      const searchResult = await runStoreSearch({
-        query,
-        selectedStoreLocation,
-        searchPlaces: searchMapkitPlaces
-      });
-      setStoreLocationOptions(searchResult.locationOptions);
-      setSelectedStoreLocation(searchResult.effectiveSelectedLocation);
-      setStoreSearchResults(searchResult.stores);
-      setStoreSearchFeedback(searchResult.feedback);
-      setSelectedResultStore(searchResult.stores[0] ?? null);
-
-      try {
-        const rawCache = window.localStorage.getItem(storeSearchCacheStorageKey);
-        const parsedCache = rawCache ? JSON.parse(rawCache) : {};
-        const safeCache = parsedCache && typeof parsedCache === 'object' ? parsedCache : {};
-        const nextCache = {
-          ...safeCache,
-          [cacheKey]: {
-            savedAt: Date.now(),
-            locationOptions: searchResult.locationOptions,
-            effectiveSelectedLocation: searchResult.effectiveSelectedLocation,
-            stores: searchResult.stores,
-            feedback: searchResult.feedback
-          }
-        };
-        const entries = Object.entries(nextCache).sort(
-          (a, b) => Number(b?.[1]?.savedAt || 0) - Number(a?.[1]?.savedAt || 0)
-        );
-        window.localStorage.setItem(
-          storeSearchCacheStorageKey,
-          JSON.stringify(Object.fromEntries(entries.slice(0, 40)))
-        );
-      } catch (_error) {
-        // Ignore cache errors.
-      }
-    } catch (_error) {
-      setStoreSearchResults([]);
-      setStoreSearchFeedback('Could not search stores. Try again.');
+    } catch (_err) {
+      setCitySearchFeedback('Search failed — please try again.');
     } finally {
-      setIsStoreSearching(false);
+      setIsCitySearching(false);
     }
   }
 
-  async function savePreferredStore(store) {
-    setStoreSearchFeedback('');
+  async function savePreferredStore(city) {
+    setCitySearchFeedback('');
 
     if (!loggedInUser || loggedInUser.role !== 'user') {
-      setStoreSearchFeedback('Please log in with a user account.');
+      setCitySearchFeedback('Please log in with a user account.');
       return;
     }
     if (!loginAuthHeader) {
-      setStoreSearchFeedback('Please log in again.');
+      setCitySearchFeedback('Please log in again.');
       return;
     }
 
@@ -720,56 +455,39 @@ export default function App() {
     try {
       const response = await fetch(`${apiBaseUrl}/api/me/preferred-store`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: loginAuthHeader
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: loginAuthHeader },
         body: JSON.stringify(
-          store
+          city
             ? {
-                placeId: store.placeId || null,
-                name: store.name || null,
-                address: store.address || null,
-                url: store.url || null,
-                website: store.website || null,
-                phone: store.phone || null,
-                latitude: Number.isFinite(Number(store.latitude)) ? Number(store.latitude) : null,
-                longitude: Number.isFinite(Number(store.longitude)) ? Number(store.longitude) : null
+                placeId: city.placeId || null,
+                name: city.name || null,
+                latitude: Number.isFinite(city.latitude) ? city.latitude : null,
+                longitude: Number.isFinite(city.longitude) ? city.longitude : null
               }
             : { placeId: null }
         )
       });
       const payload = await response.json();
       if (!response.ok) {
-        setStoreSearchFeedback(payload.error || 'Could not save preferred store.');
+        setCitySearchFeedback(payload.error || 'Could not save preferred city.');
         return;
       }
-      const mergedPreferredStore = payload.preferredStore
+      const saved = payload.preferredStore
         ? {
-            ...payload.preferredStore,
-            // prefer server-returned coords; fall back to local store object
+            name: payload.preferredStore.name || city?.name || null,
             latitude: payload.preferredStore.latitude != null
               ? Number(payload.preferredStore.latitude)
-              : Number.isFinite(Number(store?.latitude)) ? Number(store.latitude) : null,
+              : (city?.latitude ?? null),
             longitude: payload.preferredStore.longitude != null
               ? Number(payload.preferredStore.longitude)
-              : Number.isFinite(Number(store?.longitude)) ? Number(store.longitude) : null
+              : (city?.longitude ?? null)
           }
         : null;
-      setPreferredStore(mergedPreferredStore);
-      setSelectedStoreCoordinate(
-        mergedPreferredStore &&
-          Number.isFinite(Number(mergedPreferredStore.latitude)) &&
-          Number.isFinite(Number(mergedPreferredStore.longitude))
-          ? {
-              latitude: Number(mergedPreferredStore.latitude),
-              longitude: Number(mergedPreferredStore.longitude)
-            }
-          : null
-      );
-      setStoreSearchFeedback(store ? 'Preferred store saved.' : 'Preferred store cleared.');
+      setPreferredStore(saved);
+      setCitySearchResults([]);
+      setCitySearchFeedback(city ? '' : '');
     } catch (_error) {
-      setStoreSearchFeedback('Could not save preferred store.');
+      setCitySearchFeedback('Could not save preferred city. Please try again.');
     } finally {
       setIsPreferredStoreSaving(false);
     }
@@ -2457,125 +2175,57 @@ export default function App() {
                 </div>
 
                 <div className="settings-panel">
-                  <h2>Preferred Store</h2>
+                  <h2>Your City</h2>
+                  <p className="notice subtle">Used to find nearby trade matches. Only your city is shared — no exact address.</p>
+
                   {preferredStore ? (
-                    <div className="settings-store">
-                      <p className="settings-store-name">{preferredStore.name || 'Preferred store'}</p>
-                      {preferredStore.address ? (
-                        <p className="settings-store-address">{preferredStore.address}</p>
-                      ) : null}
-                      {preferredStore.website ? (
-                        <p>
-                          <a href={preferredStore.website} target="_blank" rel="noreferrer">
-                            Website
-                          </a>
-                        </p>
-                      ) : preferredStore.url ? (
-                        <p>
-                          <a href={preferredStore.url} target="_blank" rel="noreferrer">
-                            Google Listing
-                          </a>
-                        </p>
-                      ) : null}
-                      {preferredStore.phone ? (
-                        <p className="settings-store-address">{preferredStore.phone}</p>
-                      ) : null}
-                      <div className="settings-store-map-wrap">
-                        {selectedStoreCoordinate ? (
-                          <div ref={storeMapContainerRef} className="settings-store-map" />
-                        ) : (
-                          <p className="settings-store-address">Map preview not available for this store yet.</p>
-                        )}
-                      </div>
+                    <div className="settings-city-current">
+                      <span className="settings-city-name">📍 {preferredStore.name}</span>
                       <button
                         type="button"
+                        className="action-button secondary"
                         onClick={() => savePreferredStore(null)}
                         disabled={isPreferredStoreSaving}
                       >
-                        {isPreferredStoreSaving ? 'Clearing...' : 'Clear Preferred Store'}
+                        {isPreferredStoreSaving ? 'Clearing…' : 'Clear'}
                       </button>
                     </div>
                   ) : (
-                    <p>No preferred store selected yet.</p>
+                    <p className="notice subtle">No city set yet.</p>
                   )}
 
-                  <form className="join-form" onSubmit={handleStoreSearch}>
-                    <label htmlFor="store-search" className="sr-only">
-                      Search stores
-                    </label>
+                  <form className="join-form" onSubmit={handleCitySearch}>
+                    <label htmlFor="city-search" className="sr-only">Search for a city</label>
                     <input
-                      id="store-search"
+                      id="city-search"
                       type="text"
-                      placeholder="Search store name or city"
-                      value={storeSearchQuery}
-                      onChange={(event) => setStoreSearchQuery(event.target.value)}
+                      placeholder="e.g. Chicago, London, Tokyo…"
+                      value={citySearchQuery}
+                      onChange={(e) => setCitySearchQuery(e.target.value)}
                     />
-                    <button type="submit" disabled={isStoreSearching}>
-                      {isStoreSearching ? 'Searching...' : 'Search'}
+                    <button type="submit" disabled={isCitySearching}>
+                      {isCitySearching ? 'Searching…' : 'Search'}
                     </button>
                   </form>
 
-                  {storeLocationOptions.length ? (
-                    <div className="store-location-options">
-                      <p className="settings-store-address">Possible locations:</p>
-                      <div className="store-location-option-list">
-                        {storeLocationOptions.map((option) => (
-                          <button
-                            key={option}
-                            type="button"
-                            className={option === selectedStoreLocation ? 'store-location-option active' : 'store-location-option'}
-                            onClick={() => {
-                              setSelectedStoreLocation(option);
-                              setStoreSearchFeedback(`Location set to ${option}. Click Search.`);
-                            }}
-                          >
-                            {option}
-                          </button>
-                        ))}
-                        {selectedStoreLocation ? (
+                  {citySearchFeedback ? <p className="notice subtle">{citySearchFeedback}</p> : null}
+
+                  {citySearchResults.length > 0 ? (
+                    <div className="city-results">
+                      {citySearchResults.map((city) => (
+                        <div key={city.placeId} className="city-result">
+                          <span className="city-result-name">{city.name}</span>
                           <button
                             type="button"
-                            className="store-location-option"
-                            onClick={() => {
-                              setSelectedStoreLocation('');
-                              setStoreSearchFeedback('Location filter cleared.');
-                            }}
-                          >
-                            Clear
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {!isMapKitReady ? (
-                    <p className="settings-store-address">
-                      Store search requires Apple MapKit. If this message persists, the MapKit token
-                      is not configured.
-                    </p>
-                  ) : null}
-
-                  {storeSearchFeedback ? <p>{storeSearchFeedback}</p> : null}
-
-                  {storeSearchResults.length ? (
-                    <div className="store-results">
-                      {storeSearchResults.map((store) => (
-                        <div key={store.placeId || store.name} className="store-result">
-                          <div className="store-result-main">
-                            <p className="store-result-name">{store.name}</p>
-                            {store.address ? <p className="store-result-address">{store.address}</p> : null}
-                          </div>
-                          <button
-                            type="button"
-                            className={preferredStore?.placeId && preferredStore.placeId === store.placeId ? 'action-button secondary' : ''}
-                            onClick={() => savePreferredStore(store)}
+                            className={preferredStore?.name === city.name ? 'action-button secondary' : 'action-button primary'}
+                            onClick={() => savePreferredStore(city)}
                             disabled={isPreferredStoreSaving}
                           >
                             {isPreferredStoreSaving
-                              ? 'Saving...'
-                              : preferredStore?.placeId && preferredStore.placeId === store.placeId
-                                ? '✓ Saved'
-                                : 'Save'}
+                              ? 'Saving…'
+                              : preferredStore?.name === city.name
+                                ? '✓ Selected'
+                                : 'Select'}
                           </button>
                         </div>
                       ))}
@@ -2692,110 +2342,13 @@ export default function App() {
               </p>
             ) : null}
 
-            <div className="store-locator-section">
-              <h2>Find a Magic Store</h2>
-              <form className="join-form" onSubmit={handleStoreSearch}>
-                <label htmlFor="dashboard-store-search" className="sr-only">Search stores</label>
-                <input
-                  id="dashboard-store-search"
-                  type="text"
-                  placeholder="Search by store name or city"
-                  value={storeSearchQuery}
-                  onChange={(event) => setStoreSearchQuery(event.target.value)}
-                />
-                <button type="submit" disabled={isStoreSearching}>
-                  {isStoreSearching ? 'Searching...' : 'Search'}
-                </button>
-              </form>
-
-              {storeLocationOptions.length ? (
-                <div className="store-location-options">
-                  <p className="settings-store-address">Narrow by location:</p>
-                  <div className="store-location-option-list">
-                    {storeLocationOptions.map((option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        className={option === selectedStoreLocation ? 'store-location-option active' : 'store-location-option'}
-                        onClick={() => {
-                          setSelectedStoreLocation(option);
-                          setStoreSearchFeedback(`Location set to ${option}. Click Search.`);
-                        }}
-                      >
-                        {option}
-                      </button>
-                    ))}
-                    {selectedStoreLocation ? (
-                      <button
-                        type="button"
-                        className="store-location-option"
-                        onClick={() => {
-                          setSelectedStoreLocation('');
-                          setStoreSearchFeedback('Location filter cleared.');
-                        }}
-                      >
-                        Clear
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null}
-
-              {!isMapKitReady && storeSearchQuery ? (
-                <p className="notice subtle">Store search is loading…</p>
-              ) : null}
-              {storeSearchFeedback ? <p className="notice">{storeSearchFeedback}</p> : null}
-
-              {storeSearchResults.length ? (
-                <div className="store-results-with-map">
-                  <div className="store-results">
-                    {storeSearchResults.map((store) => {
-                      const isSelected = selectedResultStore === store ||
-                        (selectedResultStore?.placeId && selectedResultStore.placeId === store.placeId);
-                      return (
-                        <div
-                          key={store.placeId || store.name}
-                          className={`store-result${isSelected ? ' store-result-selected' : ''}`}
-                          onClick={() => setSelectedResultStore(store)}
-                          style={{ cursor: 'pointer' }}
-                        >
-                          <div className="store-result-main">
-                            <p className="store-result-name">{store.name}</p>
-                            {store.address ? <p className="store-result-address">{store.address}</p> : null}
-                            {store.phone ? <p className="store-result-address">{store.phone}</p> : null}
-                            {store.website ? (
-                              <a href={store.website} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Website</a>
-                            ) : store.url ? (
-                              <a href={store.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Maps Listing</a>
-                            ) : null}
-                          </div>
-                          {loggedInUser?.role === 'user' ? (
-                            <button
-                              type="button"
-                              className={preferredStore?.placeId && preferredStore.placeId === store.placeId ? 'action-button secondary' : ''}
-                              onClick={(e) => { e.stopPropagation(); savePreferredStore(store); }}
-                              disabled={isPreferredStoreSaving}
-                            >
-                              {isPreferredStoreSaving
-                                ? 'Saving...'
-                                : preferredStore?.placeId && preferredStore.placeId === store.placeId
-                                  ? '✓ My Store'
-                                  : 'Save as My Store'}
-                            </button>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {selectedResultStore && Number.isFinite(Number(selectedResultStore.latitude)) ? (
-                    <div className="store-result-map-wrap">
-                      <div ref={dashboardResultMapContainerRef} className="store-result-map" />
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
+            {loggedInUser?.role === 'user' && !preferredStore ? (
+              <div className="store-locator-section">
+                <p className="notice subtle">
+                  📍 <a href="#/settings">Set your city in Settings</a> to get nearby trade matches first.
+                </p>
+              </div>
+            ) : null}
           </section>
         </main>
         {loginServiceIndicator}
