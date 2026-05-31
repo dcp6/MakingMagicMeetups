@@ -419,7 +419,7 @@ export default function App() {
         'borough', 'suburb', 'quarter', 'neighbourhood'
       ]);
       const results = data
-        .filter((r) => r.class === 'place' && cityTypes.has(r.type))
+        .filter((r) => cityTypes.has(r.addresstype) || (r.class === 'place' && cityTypes.has(r.type)))
         .map((r) => ({
           placeId: String(r.place_id),
           name: buildCityLabel(r),
