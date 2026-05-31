@@ -426,7 +426,8 @@ for (const column of [
   'image_small TEXT',
   'image_normal TEXT',
   'image_small_back TEXT',
-  'image_normal_back TEXT'
+  'image_normal_back TEXT',
+  'foil INTEGER NOT NULL DEFAULT 0'
 ]) {
   try {
     db.exec(`ALTER TABLE my_cards ADD COLUMN ${column}`);
@@ -709,16 +710,16 @@ const deleteAllMyCards = db.prepare(`DELETE FROM my_cards WHERE account_id = ?`)
 const insertMyCard = db.prepare(`
   INSERT INTO my_cards (
     account_id, card_name, quantity, requesting, asking_quantity, asking_price_cents,
-    offer_price_cents, condition, scryfall_id, set_code, set_name, collector_number,
+    offer_price_cents, condition, foil, scryfall_id, set_code, set_name, collector_number,
     image_small, image_normal, image_small_back, image_normal_back
   )
-  VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const listMyCards = db.prepare(`
   SELECT
     id, card_name, quantity, requesting, asking_quantity, asking_price_cents, offer_price_cents,
-    condition, scryfall_id, set_code, set_name, collector_number,
+    condition, foil, scryfall_id, set_code, set_name, collector_number,
     image_small, image_normal, image_small_back, image_normal_back
   FROM my_cards
   WHERE account_id = ?
@@ -1390,6 +1391,7 @@ async function saveCardsRuntime(accountId, entries, saveMode) {
           entry.askingPriceCents ?? null,
           entry.offerPriceCents ?? null,
           entry.condition ?? null,
+          entry.foil ? 1 : 0,
           entry.scryfallId ?? null,
           entry.setCode ?? null,
           entry.setName ?? null,
@@ -1414,10 +1416,10 @@ async function saveCardsRuntime(accountId, entries, saveMode) {
         `
           INSERT INTO my_cards (
             account_id, card_name, quantity, requesting, asking_quantity, asking_price_cents,
-            offer_price_cents, condition, scryfall_id, set_code, set_name, collector_number,
+            offer_price_cents, condition, foil, scryfall_id, set_code, set_name, collector_number,
             image_small, image_normal, image_small_back, image_normal_back
           )
-          VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+          VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
         `,
         [
           accountId,
@@ -1427,6 +1429,7 @@ async function saveCardsRuntime(accountId, entries, saveMode) {
           entry.askingPriceCents ?? null,
           entry.offerPriceCents ?? null,
           entry.condition ?? null,
+          entry.foil ? 1 : 0,
           entry.scryfallId ?? null,
           entry.setCode ?? null,
           entry.setName ?? null,
@@ -2390,6 +2393,7 @@ app.get('/api/cards', async (req, res) => {
     setName: row.set_name || null,
     collectorNumber: row.collector_number || null,
     condition: row.condition || null,
+    foil: Number(row.foil) === 1,
     imageSmall: row.image_small || null,
     imageNormal: row.image_normal || null,
     imageSmallBack: row.image_small_back || null,
@@ -2434,6 +2438,7 @@ app.post('/api/cards', async (req, res) => {
     let imageNormal = null;
     let imageSmallBack = null;
     let imageNormalBack = null;
+    let foil = false;
 
     if (typeof submitted === 'string') {
       cardName = submitted.trim();
@@ -2443,6 +2448,7 @@ app.post('/api/cards', async (req, res) => {
       askingPriceCents = parseAskingPriceCentsFromSubmittedCard(submitted);
       offerPriceCents = parseOfferPriceCentsFromSubmittedCard(submitted);
       condition = parseConditionFromSubmittedCard(submitted);
+      foil = Boolean(submitted.foil);
       scryfallId = submitted.scryfallId ? String(submitted.scryfallId).trim() : null;
       setCode = submitted.setCode ? String(submitted.setCode).trim() : null;
       setName = submitted.setName ? String(submitted.setName).trim() : null;
@@ -2468,6 +2474,7 @@ app.post('/api/cards', async (req, res) => {
       askingPriceCents,
       offerPriceCents,
       condition,
+      foil,
       scryfallId,
       setCode,
       setName,

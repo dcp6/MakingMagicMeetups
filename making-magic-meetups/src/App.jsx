@@ -1159,6 +1159,7 @@ export default function App() {
           inputName: cardName,
           resolvedName: data.name || cardName,
           tcgLow: data.prices?.usd ? `$${data.prices.usd}` : 'N/A',
+          tcgLowFoil: data.prices?.usd_foil ? `$${data.prices.usd_foil}` : null,
           tcgUrl: data.purchase_uris?.tcgplayer || null,
           error: null,
           scryfallId: data.id || entry.scryfallId || null,
@@ -1383,6 +1384,7 @@ export default function App() {
           askingPriceCents,
           offerPriceCents,
           condition: card.condition || null,
+          foil: Boolean(card.foil),
           scryfallId: card.scryfallId || null,
           setCode: card.setCode || null,
           setName: card.setName || null,
@@ -1406,8 +1408,11 @@ export default function App() {
         Number.isFinite(incomingAskingQuantity) && incomingAskingQuantity >= 0
           ? Math.max(0, Math.floor(incomingAskingQuantity))
           : quantity;
-      const nmUsd = parseUsdPrice(priced.tcgLow);
-      const nmPriceDisplay = priced.tcgLow || 'N/A';
+      const foil = Boolean(entries[index]?.foil);
+      const nmUsdRegular = parseUsdPrice(priced.tcgLow);
+      const nmUsdFoil = parseUsdPrice(priced.tcgLowFoil ?? null);
+      const nmUsd = foil && nmUsdFoil !== null ? nmUsdFoil : nmUsdRegular;
+      const nmPriceDisplay = nmUsd !== null ? `$${nmUsd.toFixed(2)}` : 'N/A';
       const condMult = getConditionMultiplier(entries[index]?.condition);
       const unitUsd = nmUsd !== null ? nmUsd * condMult : null;
       const tcgLow = unitUsd !== null ? `$${unitUsd.toFixed(2)}` : nmPriceDisplay;
@@ -1431,8 +1436,11 @@ export default function App() {
         ...priced,
         id: entries[index]?.id ?? null, // DB row id — required for delete-by-id
         tcgLow,           // condition-adjusted price display (overrides NM from Scryfall)
-        nmUsd,            // raw NM price number, kept for live recalc when condition changes
-        nmPriceDisplay,   // raw NM price string, e.g. "$3.26", for reference display
+        nmUsd,            // effective NM price (foil or regular), for live recalc on condition change
+        nmUsdRegular,     // raw non-foil NM price, for switching between foil/regular
+        nmUsdFoil,        // raw foil NM price (may be null), for switching between foil/regular
+        nmPriceDisplay,   // formatted active NM price string, e.g. "$3.26", for reference display
+        foil,
         quantity,
         requesting,
         marketStatus,
@@ -1539,6 +1547,7 @@ export default function App() {
                 ? null
                 : Number(entry.offerPriceCents),
             condition: entry.condition || null,
+            foil: Boolean(entry.foil),
             scryfallId: entry.scryfallId || null,
             setCode: entry.setCode || null,
             setName: entry.setName || null,
@@ -1867,6 +1876,28 @@ export default function App() {
     );
   }
 
+  function handleFoilChange(index, isFoil) {
+    setUploadedCards((previous) =>
+      previous.map((card, i) => {
+        if (i !== index) return card;
+        const nmUsd = isFoil && card.nmUsdFoil !== null ? card.nmUsdFoil : card.nmUsdRegular;
+        const nmPriceDisplay = nmUsd !== null ? `$${nmUsd.toFixed(2)}` : 'N/A';
+        const mult = getConditionMultiplier(card.condition);
+        const unitUsd = nmUsd !== null ? nmUsd * mult : null;
+        const tcgLow = unitUsd !== null ? `$${unitUsd.toFixed(2)}` : nmPriceDisplay;
+        return {
+          ...card,
+          foil: isFoil,
+          nmUsd,
+          nmPriceDisplay,
+          unitUsd,
+          tcgLow,
+          lineTotalUsd: unitUsd !== null ? unitUsd * card.quantity : null
+        };
+      })
+    );
+  }
+
   function handleRequestingAskingQuantityChange(index, nextValue) {
     setUploadedCards((previous) => applyAskingQuantityChange(previous, index, nextValue));
   }
@@ -1950,8 +1981,10 @@ export default function App() {
         if (i !== index) {
           return row;
         }
-        const nmUsd = parseUsdPrice(refreshed.tcgLow);
-        const nmPriceDisplay = refreshed.tcgLow || 'N/A';
+        const nmUsdRegular = parseUsdPrice(refreshed.tcgLow);
+        const nmUsdFoil = parseUsdPrice(refreshed.tcgLowFoil ?? null);
+        const nmUsd = row.foil && nmUsdFoil !== null ? nmUsdFoil : nmUsdRegular;
+        const nmPriceDisplay = nmUsd !== null ? `$${nmUsd.toFixed(2)}` : 'N/A';
         const mult = getConditionMultiplier(row.condition);
         const unitUsd = nmUsd !== null ? nmUsd * mult : null;
         const tcgLow = unitUsd !== null ? `$${unitUsd.toFixed(2)}` : nmPriceDisplay;
@@ -1961,6 +1994,8 @@ export default function App() {
           ...refreshed,
           tcgLow,
           nmUsd,
+          nmUsdRegular,
+          nmUsdFoil,
           nmPriceDisplay,
           scryfallId: refreshed.scryfallId || scryfallId,
           setCode: refreshed.setCode || row.setCode || null,
@@ -2830,6 +2865,7 @@ export default function App() {
                           <th className="mobile-hide-saved">Version</th>
                           <th>TCGPlayer Low</th>
                           <th>Condition</th>
+                          <th>Foil</th>
                           <th>Status</th>
                           <th className="mobile-hide-saved">Links</th>
                         </tr>
@@ -2889,6 +2925,17 @@ export default function App() {
                                 <option value="dmg">DMG</option>
                               </select>
                             </td>
+                            <td className="foil-cell">
+                              <label className="foil-label" title={card.nmUsdFoil !== null ? `Foil price: $${card.nmUsdFoil?.toFixed(2)}` : 'No foil price available'}>
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(card.foil)}
+                                  onChange={(e) => handleFoilChange(index, e.target.checked)}
+                                  aria-label={`Foil for ${card.resolvedName || card.inputName}`}
+                                />
+                                {card.nmUsdFoil === null ? <span className="foil-unavailable" title="No foil price on Scryfall">✦</span> : null}
+                              </label>
+                            </td>
                             <td className="requesting-cell">
                               <select className="market-status-select" value={card.marketStatus || 'have'} onChange={(event) => handleMarketStatusChange(index, event.target.value)} aria-label={`Status ${card.resolvedName}`}>
                                 <option value="have">Owned</option>
@@ -2904,7 +2951,7 @@ export default function App() {
                         <tr>
                           <th colSpan={4}>Total</th>
                           <th>${cardCostTotal.toFixed(2)}</th>
-                          <th /><th />
+                          <th /><th /><th />
                         </tr>
                       </tfoot>
                     </table>
@@ -2980,6 +3027,7 @@ export default function App() {
                                   </span>
                                 ) : null}
                                 {card.condition ? <span className="mobile-price-tag mobile-price-tag--condition">{card.condition.toUpperCase()}</span> : null}
+                                {card.foil ? <span className="mobile-price-tag mobile-price-tag--foil">Foil</span> : null}
                                 {card.askingPriceCents != null ? <span className="mobile-price-tag mobile-price-tag--ask">Ask ${formatCents(card.askingPriceCents)}</span> : null}
                                 {card.offerPriceCents != null ? <span className="mobile-price-tag mobile-price-tag--offer">Offer ${formatCents(card.offerPriceCents)}</span> : null}
                               </span>
@@ -2999,6 +3047,7 @@ export default function App() {
                             <th>TCG Price</th>
                             <th>Status</th>
                             <th>Condition</th>
+                            <th>Foil</th>
                             <th>Ask Price</th>
                             <th>Offer Price</th>
                             <th>Actions</th>
@@ -3079,6 +3128,17 @@ export default function App() {
                                     <option value="hp">HP</option>
                                     <option value="dmg">DMG</option>
                                   </select>
+                                </td>
+                                <td className="foil-cell">
+                                  <label className="foil-label" title={card.nmUsdFoil !== null ? `Foil price: $${card.nmUsdFoil?.toFixed(2)}` : 'No foil price available'}>
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(card.foil)}
+                                      onChange={(e) => handleFoilChange(index, e.target.checked)}
+                                      aria-label={`Foil for ${card.resolvedName || card.inputName}`}
+                                    />
+                                    {card.nmUsdFoil === null ? <span className="foil-unavailable" title="No foil price on Scryfall">✦</span> : null}
+                                  </label>
                                 </td>
                                 <td>
                                   <input

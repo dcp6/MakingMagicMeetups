@@ -968,6 +968,32 @@ h1 {
   border: 1px solid #bbf7d0;
 }
 
+.mobile-price-tag--foil {
+  background: #fdf4ff;
+  color: #7e22ce;
+  border: 1px solid #e9d5ff;
+  font-variant: all-small-caps;
+  letter-spacing: 0.04em;
+}
+
+/* Foil checkbox cell */
+.foil-cell {
+  text-align: center;
+}
+
+.foil-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+}
+
+.foil-unavailable {
+  font-size: 0.65rem;
+  color: #94a3b8;
+  cursor: help;
+}
+
 /* Condition select in table */
 .condition-select {
   font-size: 0.82rem;
