@@ -2816,7 +2816,9 @@ const BEST_OFFERS_SQL = `
       (mc.market_price_cents - mc.offer_price_cents) AS sort_val,
       mc.condition, mc.foil, mc.scryfall_id, mc.set_code, mc.set_name,
       mc.collector_number, mc.image_small, mc.image_normal,
-      a.username
+      a.username,
+      a.preferred_store_latitude  AS offer_lat,
+      a.preferred_store_longitude AS offer_lng
     FROM my_cards mc
     JOIN accounts a ON a.id = mc.account_id
     WHERE mc.requesting = 1
@@ -2833,7 +2835,9 @@ const BEST_OFFERS_SQL = `
       (mc.asking_price_cents - mc.market_price_cents) AS sort_val,
       mc.condition, mc.foil, mc.scryfall_id, mc.set_code, mc.set_name,
       mc.collector_number, mc.image_small, mc.image_normal,
-      a.username
+      a.username,
+      a.preferred_store_latitude  AS offer_lat,
+      a.preferred_store_longitude AS offer_lng
     FROM my_cards mc
     JOIN accounts a ON a.id = mc.account_id
     WHERE mc.requesting = 2
@@ -2845,27 +2849,53 @@ const BEST_OFFERS_SQL = `
   ORDER BY sort_val DESC
 `;
 
-app.get('/api/great-offers', async (_req, res) => {
+app.get('/api/great-offers', async (req, res) => {
   try {
-    const LIMIT = 24;
+    const CAP  = 200; // fetch pool; distance-sort then trim
+    const SHOW = 24;
 
+    const viewerLat = Number(req.query.lat);
+    const viewerLng = Number(req.query.lng);
+    const hasLocation = Number.isFinite(viewerLat) && Number.isFinite(viewerLng);
+
+    let rawRows;
     if (!usePostgresRuntime) {
-      const rows = db.prepare(`${BEST_OFFERS_SQL} LIMIT ${LIMIT}`).all();
-      return res.json({ offers: rows.map(normalizeGreatOffer) });
+      rawRows = db.prepare(`${BEST_OFFERS_SQL} LIMIT ${CAP}`).all();
+    } else {
+      const { rows } = await pgQuery(`${BEST_OFFERS_SQL} LIMIT $1`, [CAP]);
+      rawRows = rows;
     }
 
-    const { rows } = await pgQuery(`${BEST_OFFERS_SQL} LIMIT $1`, [LIMIT]);
-    return res.json({ offers: rows.map(normalizeGreatOffer) });
+    // If viewer has a location: partition near (≤50 mi) vs far, near first.
+    // Each partition retains the SQL's sort_val (dollar-savings) order.
+    let sorted;
+    if (hasLocation) {
+      const near = [];
+      const far  = [];
+      for (const row of rawRows) {
+        const d = haversineMiles(viewerLat, viewerLng,
+                                 Number(row.offer_lat), Number(row.offer_lng));
+        if (d != null && d <= 50) near.push({ ...row, _dist: d });
+        else far.push({ ...row, _dist: d ?? null });
+      }
+      sorted = [...near, ...far].slice(0, SHOW);
+    } else {
+      sorted = rawRows.slice(0, SHOW);
+    }
+
+    return res.json({
+      offers: sorted.map((row) => normalizeGreatOffer(row, viewerLat, viewerLng))
+    });
   } catch (err) {
     console.error('/api/great-offers error', err);
     return res.status(500).json({ error: 'Could not load great offers.' });
   }
 });
 
-function normalizeGreatOffer(row) {
+function normalizeGreatOffer(row, viewerLat, viewerLng) {
   const marketCents = Number(row.market_price_cents);
-  const dealType = row.deal_type;
-  const priceCents = dealType === 'offer'
+  const dealType    = row.deal_type;
+  const priceCents  = dealType === 'offer'
     ? Number(row.offer_price_cents)
     : Number(row.asking_price_cents);
   const pct = marketCents > 0
@@ -2873,6 +2903,11 @@ function normalizeGreatOffer(row) {
       ? Math.round((1 - priceCents / marketCents) * 100)
       : Math.round((priceCents / marketCents - 1) * 100)
     : 0;
+  const rawDist = row._dist != null
+    ? row._dist
+    : haversineMiles(viewerLat, viewerLng,
+                     Number(row.offer_lat), Number(row.offer_lng));
+  const distanceMiles = rawDist != null ? Math.round(rawDist) : null;
   return {
     id: row.id,
     dealType,
@@ -2880,6 +2915,7 @@ function normalizeGreatOffer(row) {
     priceCents,
     marketPriceCents: marketCents,
     pct,
+    distanceMiles,
     condition: row.condition || null,
     foil: Boolean(row.foil),
     scryfallId: row.scryfall_id || null,

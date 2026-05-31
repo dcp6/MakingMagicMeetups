@@ -1881,11 +1881,38 @@ h1 {
   text-decoration: line-through;
 }
 
-.great-offer-label {
+.great-offer-card--near {
+  border-color: #bbf7d0;
+  box-shadow: 0 0 0 1px #bbf7d0;
+}
+
+.great-offers-location-hint {
+  margin-bottom: 0.9rem;
+}
+
+.great-offer-meta {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.great-offer-label {
   font-size: 0.72rem;
   color: var(--text-700);
   font-style: italic;
+}
+
+.great-offer-dist {
+  font-size: 0.7rem;
+  color: var(--text-700);
+  font-variant-numeric: tabular-nums;
+}
+
+.great-offer-dist--near {
+  color: #16a34a;
+  font-weight: 600;
 }
 
 .great-offer-seller {

@@ -392,13 +392,17 @@ export default function App() {
   useEffect(() => {
     if (route !== 'home') return;
     setGreatOffersLoading(true);
-    fetch(`${apiBaseUrl}/api/great-offers`)
+    const params = new URLSearchParams();
+    if (preferredStore?.latitude != null)  params.set('lat', preferredStore.latitude);
+    if (preferredStore?.longitude != null) params.set('lng', preferredStore.longitude);
+    const qs = params.toString() ? `?${params}` : '';
+    fetch(`${apiBaseUrl}/api/great-offers${qs}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => { if (data?.offers) setGreatOffers(data.offers); })
       .catch(() => {})
       .finally(() => setGreatOffersLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route, apiBaseUrl]);
+  }, [route, apiBaseUrl, preferredStore]);
 
   function buildCityLabel(r) {
     const addr = r.address || {};
@@ -3535,9 +3539,16 @@ export default function App() {
             <div className="great-offers-header">
               <h2>Best Offers</h2>
               <span className="great-offers-subtitle">
-                Offers 15%+ below market · Wants 15%+ above market
+                {preferredStore
+                  ? <>Near <strong>{preferredStore.name}</strong> · offers 15%+ below market or wants 15%+ above</>
+                  : 'Offers 15%+ below market · Wants 15%+ above market'}
               </span>
             </div>
+            {!preferredStore && !greatOffersLoading ? (
+              <p className="notice subtle great-offers-location-hint">
+                📍 <a href="#/settings">Set your city in Settings</a> to see nearby offers first.
+              </p>
+            ) : null}
             {greatOffersLoading ? (
               <p className="notice subtle">Loading…</p>
             ) : (
@@ -3549,8 +3560,12 @@ export default function App() {
                   const userLink = loggedInUser
                     ? `#/messages?compose=${offer.username}`
                     : '#/login';
+                  const isNear = offer.distanceMiles != null && offer.distanceMiles <= 50;
                   return (
-                    <div key={`${offer.dealType}-${offer.id}`} className={`great-offer-card great-offer-card--${offer.dealType}`}>
+                    <div
+                      key={`${offer.dealType}-${offer.id}`}
+                      className={`great-offer-card great-offer-card--${offer.dealType}${isNear ? ' great-offer-card--near' : ''}`}
+                    >
                       <div className="great-offer-img-wrap">
                         {offer.imageSmall ? (
                           <img
@@ -3580,8 +3595,15 @@ export default function App() {
                           </span>
                           <span className="great-offer-market">mkt ${marketDollars}</span>
                         </p>
-                        <p className="great-offer-label">
-                          {isOffer ? 'Offering' : 'Wants to pay'}
+                        <p className="great-offer-meta">
+                          <span className="great-offer-label">
+                            {isOffer ? 'Offering' : 'Wants to pay'}
+                          </span>
+                          {offer.distanceMiles != null ? (
+                            <span className={`great-offer-dist${isNear ? ' great-offer-dist--near' : ''}`}>
+                              📍 {offer.distanceMiles} mi
+                            </span>
+                          ) : null}
                         </p>
                         <p className="great-offer-seller">
                           <a href={userLink} className="great-offer-user">
