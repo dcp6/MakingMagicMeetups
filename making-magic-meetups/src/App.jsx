@@ -2987,8 +2987,8 @@ export default function App() {
                   <p className="notice subtle">
                     Users whose Ask or Offer price overlaps yours within 20% on the same card.{' '}
                     {preferredStore
-                      ? '📍 Matches within 50 miles of your store appear first.'
-                      : <><a href="#/settings">Set a preferred store</a> to see distances and get nearby matches first.</>}
+                      ? '📍 Matches within 50 miles of your location appear first.'
+                      : <><a href="#/settings">Set a preferred location</a> to see distances and get nearby matches first.</>}
                   </p>
                   {matchesLoading ? (
                     <p className="notice subtle">Finding matches…</p>
@@ -3071,8 +3071,8 @@ export default function App() {
                                 ) : preferredStore ? (
                                   <span className="far-store-label" title="This user hasn't set a store location yet">—</span>
                                 ) : (
-                                  <span className="no-store-hint" title="Set a preferred store in Settings to see distances">
-                                    <a href="#/settings">Set store</a>
+                                  <span className="no-store-hint" title="Set a preferred location in Settings to see distances">
+                                    <a href="#/settings">Set location</a>
                                   </span>
                                 )}
                               </td>
