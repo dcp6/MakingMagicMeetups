@@ -2505,9 +2505,9 @@ export default function App() {
                     </table>
                   )}
 
-                  <p className="price-matches-footer">
-                    <a href="#/my-cards">Manage cards and prices on My Cards →</a>
-                  </p>
+                  <div className="pm-footer-actions">
+                    <a href="#/my-cards" className="action-button secondary">Manage My Cards →</a>
+                  </div>
                 </>
               )}
             </div>

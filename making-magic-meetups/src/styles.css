@@ -472,6 +472,9 @@ h1 {
 }
 
 .action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 38px;
   padding: 0 0.95rem;
   border-radius: 999px;
@@ -479,6 +482,7 @@ h1 {
   font-weight: 800;
   letter-spacing: 0.02em;
   cursor: pointer;
+  text-decoration: none;
   box-shadow: 0 12px 26px rgba(15, 33, 53, 0.12);
   transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
 }
@@ -2207,20 +2211,12 @@ h1 {
 .patch-row--high { background: #f0fdf4; }
 .patch-row--low  { background: #fff5f5; }
 
-.price-matches-footer {
-  margin-top: 0.75rem;
-  font-size: 0.82rem;
-  color: var(--text-700);
-}
-
-.price-matches-footer a {
-  color: var(--mint-400);
-  text-decoration: none;
-  font-weight: 600;
-}
-
-.price-matches-footer a:hover {
-  text-decoration: underline;
+.pm-footer-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--stroke);
 }
 
 @media (max-width: 600px) {
