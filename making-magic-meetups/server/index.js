@@ -2991,150 +2991,156 @@ app.get('/api/matches', async (req, res) => {
 
 // ── MTG Events API ───────────────────────────────────────────────────────────
 
-// Well-known recurring MTG event types shown when no live data is available.
-const FALLBACK_MTG_EVENTS = [
-  {
-    id: 'fnm',
-    type: 'FNM',
-    title: 'Friday Night Magic',
-    format: 'Standard / Draft',
-    schedule: 'Every Friday evening',
-    description: 'The weekly MTG staple. Show up, play some games, and trade between rounds.',
-    locatorUrl: 'https://locator.wizards.com',
-    isRecurring: true,
-  },
-  {
-    id: 'prerelease',
-    type: 'Prerelease',
-    title: 'Prerelease Weekend',
-    format: 'Sealed',
-    schedule: 'Each new set release',
-    description: 'Play the newest set before it officially releases. One of the best times to trade fresh cards.',
-    locatorUrl: 'https://locator.wizards.com',
-    isRecurring: true,
-  },
-  {
-    id: 'commander',
-    type: 'Commander',
-    title: 'Commander Night',
-    format: 'Commander / EDH',
-    schedule: 'Weekly at most stores',
-    description: 'Multiplayer Commander games with your local playgroup. Great for casual trading.',
-    locatorUrl: 'https://locator.wizards.com',
-    isRecurring: true,
-  },
-  {
-    id: 'draft',
-    type: 'Draft',
-    title: 'Booster Draft',
-    format: 'Booster Draft',
-    schedule: 'Weekly / bi-weekly',
-    description: 'Draft a set, build a deck, battle it out. A classic way to grow your collection.',
-    locatorUrl: 'https://locator.wizards.com',
-    isRecurring: true,
-  },
-  {
-    id: 'store-champ',
-    type: 'Championship',
-    title: 'Store Championship',
-    format: 'Various',
-    schedule: 'Quarterly',
-    description: 'Your store\'s premier competitive event. Promos, prizes, and serious trades.',
-    locatorUrl: 'https://locator.wizards.com',
-    isRecurring: true,
-  },
-  {
-    id: 'regional-champ',
-    type: 'Regional',
-    title: 'Regional Championship',
-    format: 'Pioneer / Standard',
-    schedule: 'Seasonally',
-    description: 'Qualify for the Pro Tour. High-stakes play and the best traders in the region.',
-    locatorUrl: 'https://locator.wizards.com/?type=regional',
-    isRecurring: false,
-  },
-];
+// Priority ranking for event types — higher = shown first.
+const EVENT_TYPE_PRIORITY = {
+  'pro tour': 100,
+  'world championship': 100,
+  'magic world championship': 100,
+  'regional championship': 90,
+  'regional champion': 90,
+  'magic fest': 80,
+  'magicfest': 80,
+  'grand prix': 80,
+  'pro tour qualifier': 70,
+  'ptq': 70,
+  'regional championship qualifier': 70,
+  'rcq': 70,
+  'store championship': 60,
+  'prerelease': 50,
+  'pre-release': 50,
+  'friday night magic': 10,
+  'fnm': 10,
+  'commander night': 5,
+  'draft': 15,
+};
 
-// Attempt to fetch upcoming events from the WotC Event Locator.
-// Returns null if the API is unavailable or returns unusable data.
-async function fetchWotcEvents(lat, lng) {
-  const baseUrl = 'https://locator.wizards.com/event_list.aspx';
-  const params = new URLSearchParams({
-    a: 'evlsearch',
-    fact: '1',
-    c: 'US',
-    lat: lat != null ? String(lat) : '',
-    lng: lng != null ? String(lng) : '',
-    zip: '',
-    str: '',
-    lang: 'en-US',
-    k: '',
-  });
+function eventPriority(typeName) {
+  const key = String(typeName || '').toLowerCase().trim();
+  for (const [pattern, score] of Object.entries(EVENT_TYPE_PRIORITY)) {
+    if (key.includes(pattern)) return score;
+  }
+  return 20; // default: show but rank below championships
+}
 
-  const response = await fetch(`${baseUrl}?${params}`, {
+// Normalise a raw event row into the shape the frontend expects.
+function normalizeWotcEvent(ev, store, idx) {
+  const rawDate = ev.starttime || ev.start_time || ev.date || ev.StartTime;
+  const startDate = rawDate ? new Date(rawDate) : null;
+  const isPast = startDate && startDate < new Date();
+  if (isPast) return null;
+
+  const typeName = ev.type || ev.Type || ev.eventtype || ev.EventType || 'Event';
+  return {
+    id: `wotc-${store?.locid || store?.id || 'x'}-${ev.eventid || ev.EventId || idx}`,
+    type: typeName,
+    title: ev.name || ev.Name || ev.title || ev.Title || typeName,
+    format: ev.format || ev.Format || null,
+    storeName: store?.name || store?.Name || null,
+    storeAddress: store?.address || store?.Address || null,
+    date: startDate
+      ? startDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+      : null,
+    dateIso: startDate ? startDate.toISOString() : null,
+    locatorUrl: 'https://locator.wizards.com',
+    priority: eventPriority(typeName),
+  };
+}
+
+// Try one WotC locator URL; return parsed events or null.
+async function tryWotcUrl(url) {
+  const res = await fetch(url, {
     headers: {
       'User-Agent': 'MakingMagicMeetups/1.0',
-      'Accept': 'application/json, text/javascript, */*',
+      'Accept': 'application/json, text/javascript, */*; q=0.9',
     },
-    signal: AbortSignal.timeout(5000),
+    signal: AbortSignal.timeout(6000),
   });
+  if (!res.ok) return null;
 
-  if (!response.ok) return null;
+  const text = await res.text();
+  if (!text || !text.trim().startsWith('{') && !text.trim().startsWith('[')) return null;
 
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('json') && !contentType.includes('javascript')) {
-    return null;
-  }
-
-  const data = await response.json();
+  let data;
+  try { data = JSON.parse(text); } catch { return null; }
   if (!data || typeof data !== 'object') return null;
 
-  // Parse WotC event locator response — shape varies by API version.
-  const stores = Array.isArray(data.stores) ? data.stores :
-    Array.isArray(data.results) ? data.results : [];
-
   const events = [];
+  // Shape A: { stores: [{ ..., events: [...] }] }
+  const stores = Array.isArray(data.stores) ? data.stores
+    : Array.isArray(data.results) ? data.results
+    : Array.isArray(data.Stores) ? data.Stores : [];
+
   for (const store of stores) {
-    const storeEvents = Array.isArray(store.events) ? store.events : [];
-    for (const ev of storeEvents) {
-      if (!ev.name || !ev.starttime) continue;
-      const startDate = new Date(ev.starttime);
-      if (isNaN(startDate.getTime()) || startDate < new Date()) continue;
-      events.push({
-        id: `wotc-${store.locid || store.id}-${ev.eventid || events.length}`,
-        type: ev.type || 'Event',
-        title: ev.name,
-        format: ev.format || null,
-        storeName: store.name || null,
-        storeAddress: store.address || null,
-        date: startDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-        dateIso: startDate.toISOString(),
-        locatorUrl: `https://locator.wizards.com`,
-        isRecurring: false,
-      });
+    const evList = Array.isArray(store.events) ? store.events
+      : Array.isArray(store.Events) ? store.Events : [];
+    for (let i = 0; i < evList.length; i++) {
+      const norm = normalizeWotcEvent(evList[i], store, i);
+      if (norm) events.push(norm);
     }
   }
 
-  return events.length > 0 ? events.slice(0, 12) : null;
+  // Shape B: { events: [...] }  (flat list)
+  if (events.length === 0 && Array.isArray(data.events)) {
+    for (let i = 0; i < data.events.length; i++) {
+      const norm = normalizeWotcEvent(data.events[i], null, i);
+      if (norm) events.push(norm);
+    }
+  }
+
+  return events.length > 0 ? events : null;
+}
+
+// Attempt to fetch upcoming events from the WotC Event Locator.
+// Tries multiple known endpoint formats; returns null if all fail.
+async function fetchWotcEvents(lat, lng) {
+  const coord = `lat=${lat}&lng=${lng}`;
+  const urls = [
+    // Current locator search endpoint (various param sets seen in the wild)
+    `https://locator.wizards.com/event_list.aspx?a=evlsearch&fact=1&c=US&${coord}&str=&lang=en-US&k=`,
+    `https://locator.wizards.com/event_list.aspx?a=evlsearch&fact=1&${coord}&dist=150&maxResults=30`,
+    `https://locator.wizards.com/event_list.aspx?a=evlsearch&fact=1&${coord}&str=&lang=en-US`,
+  ];
+
+  for (const url of urls) {
+    try {
+      const events = await tryWotcUrl(url);
+      if (events) return events;
+    } catch {
+      // Try next format.
+    }
+  }
+  return null;
 }
 
 app.get('/api/events', async (req, res) => {
   const lat = Number.isFinite(Number(req.query.lat)) ? Number(req.query.lat) : null;
   const lng = Number.isFinite(Number(req.query.lng)) ? Number(req.query.lng) : null;
 
-  // Try the live WotC event locator first.
-  try {
-    if (lat != null && lng != null) {
-      const live = await fetchWotcEvents(lat, lng);
-      if (live) {
-        return res.json({ events: live, source: 'locator' });
-      }
-    }
-  } catch (_err) {
-    // Fall through to curated events.
+  if (lat == null || lng == null) {
+    // No location — tell the frontend to show the "set location" nudge.
+    return res.json({ events: [], needsLocation: true });
   }
 
-  return res.json({ events: FALLBACK_MTG_EVENTS, source: 'fallback' });
+  try {
+    const raw = await fetchWotcEvents(lat, lng);
+    if (raw && raw.length > 0) {
+      // Sort: priority DESC, then date ASC; cap at 12.
+      const sorted = raw
+        .sort((a, b) => {
+          if (b.priority !== a.priority) return b.priority - a.priority;
+          const da = a.dateIso || '';
+          const db = b.dateIso || '';
+          return da < db ? -1 : da > db ? 1 : 0;
+        })
+        .slice(0, 12);
+      return res.json({ events: sorted, source: 'locator' });
+    }
+  } catch (_err) {
+    // Fall through.
+  }
+
+  // API returned nothing — let the frontend show the empty state.
+  return res.json({ events: [], needsLocation: false });
 });
 
 // ── End MTG Events API ────────────────────────────────────────────────────────

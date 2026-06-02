@@ -344,13 +344,14 @@ h1 {
   width: 4px;
   border-radius: 0.85rem 0 0 0.85rem;
 }
-.mtg-event-card--fnm::before         { background: #6366f1; }
-.mtg-event-card--prerelease::before  { background: #f59e0b; }
-.mtg-event-card--commander::before   { background: #16a34a; }
-.mtg-event-card--draft::before       { background: #0ea5e9; }
-.mtg-event-card--championship::before{ background: #dc2626; }
-.mtg-event-card--regional::before    { background: #9333ea; }
-.mtg-event-card--other::before       { background: #64748b; }
+.mtg-event-card--world::before        { background: #f59e0b; }
+.mtg-event-card--regional::before     { background: #9333ea; }
+.mtg-event-card--magicfest::before    { background: #dc2626; }
+.mtg-event-card--championship::before { background: #e11d48; }
+.mtg-event-card--prerelease::before   { background: #f59e0b; }
+.mtg-event-card--draft::before        { background: #0ea5e9; }
+.mtg-event-card--fnm::before          { background: #6366f1; }
+.mtg-event-card--other::before        { background: #64748b; }
 
 .mtg-event-type-badge {
   padding: 0.35rem 0.75rem 0.35rem 1rem;
@@ -360,13 +361,32 @@ h1 {
   text-transform: uppercase;
   border-bottom: 1px solid var(--stroke);
 }
-.mtg-event-card--fnm         .mtg-event-type-badge { color: #6366f1; background: #eef2ff; }
-.mtg-event-card--prerelease  .mtg-event-type-badge { color: #b45309; background: #fffbeb; }
-.mtg-event-card--commander   .mtg-event-type-badge { color: #15803d; background: #f0fdf4; }
-.mtg-event-card--draft       .mtg-event-type-badge { color: #0284c7; background: #f0f9ff; }
-.mtg-event-card--championship .mtg-event-type-badge{ color: #b91c1c; background: #fff5f5; }
-.mtg-event-card--regional    .mtg-event-type-badge { color: #7e22ce; background: #faf5ff; }
-.mtg-event-card--other       .mtg-event-type-badge { color: #475569; background: #f8fafc; }
+.mtg-event-card--world        .mtg-event-type-badge { color: #b45309; background: #fffbeb; }
+.mtg-event-card--regional     .mtg-event-type-badge { color: #7e22ce; background: #faf5ff; }
+.mtg-event-card--magicfest    .mtg-event-type-badge { color: #b91c1c; background: #fff5f5; }
+.mtg-event-card--championship .mtg-event-type-badge { color: #be123c; background: #fff1f2; }
+.mtg-event-card--prerelease   .mtg-event-type-badge { color: #b45309; background: #fffbeb; }
+.mtg-event-card--draft        .mtg-event-type-badge { color: #0284c7; background: #f0f9ff; }
+.mtg-event-card--fnm          .mtg-event-type-badge { color: #6366f1; background: #eef2ff; }
+.mtg-event-card--other        .mtg-event-type-badge { color: #475569; background: #f8fafc; }
+
+/* Empty / needs-location states */
+.mtg-events-empty {
+  padding: 1.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.mtg-events-empty-msg {
+  margin: 0;
+  color: var(--text-700);
+  font-size: 0.9rem;
+}
+.mtg-events-empty-links {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
 
 .mtg-event-body {
   padding: 0.75rem 0.85rem 0.75rem 1rem;
@@ -407,32 +427,15 @@ h1 {
   color: var(--mint-400);
 }
 
-.mtg-event-desc {
-  margin: 0.3rem 0 0;
-  font-size: 0.77rem;
-  color: var(--text-700);
-  line-height: 1.45;
-}
-
-.mtg-event-recurring {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #64748b;
-  background: #f1f5f9;
-  border-radius: 999px;
-  padding: 1px 7px;
+.mtg-event-address {
+  font-size: 0.73rem;
+  color: #94a3b8;
 }
 
 @media (max-width: 600px) {
   .mtg-events-grid {
     grid-template-columns: 1fr 1fr;
   }
-  .mtg-event-desc { display: none; }
 }
 
 /* ── Legacy events grid (kept for compat) ─────────────────────────── */

@@ -186,6 +186,7 @@ export default function App() {
   // MTG Events (home page)
   const [mtgEvents, setMtgEvents] = useState([]);
   const [mtgEventsLoading, setMtgEventsLoading] = useState(false);
+  const [mtgEventsNeedsLocation, setMtgEventsNeedsLocation] = useState(false);
 
   useEffect(() => {
     function syncRouteFromHash() {
@@ -414,13 +415,18 @@ export default function App() {
 
     // MTG Events
     setMtgEventsLoading(true);
+    setMtgEventsNeedsLocation(false);
     const evParams = new URLSearchParams();
     if (preferredStore?.latitude != null)  evParams.set('lat', preferredStore.latitude);
     if (preferredStore?.longitude != null) evParams.set('lng', preferredStore.longitude);
     const evQs = evParams.toString() ? `?${evParams}` : '';
     fetch(`${apiBaseUrl}/api/events${evQs}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => { if (Array.isArray(data?.events)) setMtgEvents(data.events); })
+      .then((data) => {
+        if (!data) return;
+        if (Array.isArray(data.events)) setMtgEvents(data.events);
+        if (data.needsLocation) setMtgEventsNeedsLocation(true);
+      })
       .catch(() => {})
       .finally(() => setMtgEventsLoading(false));
 
@@ -3514,35 +3520,66 @@ export default function App() {
         <section className="mtg-events-section" id="events">
           <div className="mtg-events-header">
             <h2>Upcoming Magic Events</h2>
-            <span className="mtg-events-subtitle">
-              {preferredStore
-                ? <>Near <strong>{preferredStore.name}</strong></>
-                : 'Regular events at game stores near you'}
-            </span>
+            {preferredStore ? (
+              <span className="mtg-events-subtitle">
+                Near <strong>{preferredStore.name}</strong>
+              </span>
+            ) : null}
             <a
               href="https://locator.wizards.com"
               target="_blank"
               rel="noopener noreferrer"
               className="mtg-events-locator-link"
             >
-              Find events near you →
+              WotC event locator →
             </a>
           </div>
 
           {mtgEventsLoading ? (
             <p className="notice subtle">Loading events…</p>
+          ) : mtgEventsNeedsLocation ? (
+            <div className="mtg-events-empty">
+              <p className="mtg-events-empty-msg">
+                📍 <a href="#/settings">Set your preferred location</a> to see upcoming events near you.
+              </p>
+            </div>
+          ) : mtgEvents.length === 0 ? (
+            <div className="mtg-events-empty">
+              <p className="mtg-events-empty-msg">
+                No upcoming events found near you right now.
+              </p>
+              <div className="mtg-events-empty-links">
+                <a
+                  href="https://locator.wizards.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="action-button secondary"
+                >
+                  WotC Event Locator
+                </a>
+                <a
+                  href="https://melee.gg/Events"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="action-button secondary"
+                >
+                  MTGMelee Events
+                </a>
+              </div>
+            </div>
           ) : (
             <div className="mtg-events-grid">
               {mtgEvents.map((ev) => {
-                const typeColors = {
-                  FNM: 'fnm',
-                  Prerelease: 'prerelease',
-                  Commander: 'commander',
-                  Draft: 'draft',
-                  Championship: 'championship',
-                  Regional: 'regional',
-                };
-                const colorKey = typeColors[ev.type] || 'other';
+                const typeLc = String(ev.type || '').toLowerCase();
+                const colorKey =
+                  typeLc.includes('pro tour') || typeLc.includes('world') ? 'world'
+                  : typeLc.includes('regional') ? 'regional'
+                  : typeLc.includes('magic fest') || typeLc.includes('magicfest') || typeLc.includes('grand prix') ? 'magicfest'
+                  : typeLc.includes('store championship') || typeLc.includes('championship') ? 'championship'
+                  : typeLc.includes('prerelease') || typeLc.includes('pre-release') ? 'prerelease'
+                  : typeLc.includes('draft') ? 'draft'
+                  : typeLc.includes('fnm') || typeLc.includes('friday') ? 'fnm'
+                  : 'other';
                 return (
                   <a
                     key={ev.id}
@@ -3560,16 +3597,13 @@ export default function App() {
                       {ev.storeName ? (
                         <p className="mtg-event-store">{ev.storeName}</p>
                       ) : null}
-                      <p className="mtg-event-schedule">
-                        {ev.date || ev.schedule}
-                      </p>
-                      {ev.description ? (
-                        <p className="mtg-event-desc">{ev.description}</p>
+                      {ev.storeAddress ? (
+                        <p className="mtg-event-store mtg-event-address">{ev.storeAddress}</p>
+                      ) : null}
+                      {ev.date ? (
+                        <p className="mtg-event-schedule">{ev.date}</p>
                       ) : null}
                     </div>
-                    {ev.isRecurring ? (
-                      <span className="mtg-event-recurring">Recurring</span>
-                    ) : null}
                   </a>
                 );
               })}
