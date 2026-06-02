@@ -183,6 +183,9 @@ export default function App() {
   // Great Offers (home page)
   const [greatOffers, setGreatOffers] = useState([]);
   const [greatOffersLoading, setGreatOffersLoading] = useState(false);
+  // MTG Events (home page)
+  const [mtgEvents, setMtgEvents] = useState([]);
+  const [mtgEventsLoading, setMtgEventsLoading] = useState(false);
 
   useEffect(() => {
     function syncRouteFromHash() {
@@ -396,6 +399,8 @@ export default function App() {
 
   useEffect(() => {
     if (route !== 'home') return;
+
+    // Great Offers
     setGreatOffersLoading(true);
     const params = new URLSearchParams();
     if (preferredStore?.latitude != null)  params.set('lat', preferredStore.latitude);
@@ -406,6 +411,19 @@ export default function App() {
       .then((data) => { if (data?.offers) setGreatOffers(data.offers); })
       .catch(() => {})
       .finally(() => setGreatOffersLoading(false));
+
+    // MTG Events
+    setMtgEventsLoading(true);
+    const evParams = new URLSearchParams();
+    if (preferredStore?.latitude != null)  evParams.set('lat', preferredStore.latitude);
+    if (preferredStore?.longitude != null) evParams.set('lng', preferredStore.longitude);
+    const evQs = evParams.toString() ? `?${evParams}` : '';
+    fetch(`${apiBaseUrl}/api/events${evQs}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (Array.isArray(data?.events)) setMtgEvents(data.events); })
+      .catch(() => {})
+      .finally(() => setMtgEventsLoading(false));
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route, apiBaseUrl, preferredStore]);
 
@@ -3492,14 +3510,71 @@ export default function App() {
           </div>
         </section>
 
-        <section className="events" id="events">
-          {events.map((event) => (
-            <article className="card" key={event.title}>
-              <p className="date">{event.date}</p>
-              <h2>{event.title}</h2>
-              <p>{event.text}</p>
-            </article>
-          ))}
+        {/* ── MTG Events ── */}
+        <section className="mtg-events-section" id="events">
+          <div className="mtg-events-header">
+            <h2>Upcoming Magic Events</h2>
+            <span className="mtg-events-subtitle">
+              {preferredStore
+                ? <>Near <strong>{preferredStore.name}</strong></>
+                : 'Regular events at game stores near you'}
+            </span>
+            <a
+              href="https://locator.wizards.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mtg-events-locator-link"
+            >
+              Find events near you →
+            </a>
+          </div>
+
+          {mtgEventsLoading ? (
+            <p className="notice subtle">Loading events…</p>
+          ) : (
+            <div className="mtg-events-grid">
+              {mtgEvents.map((ev) => {
+                const typeColors = {
+                  FNM: 'fnm',
+                  Prerelease: 'prerelease',
+                  Commander: 'commander',
+                  Draft: 'draft',
+                  Championship: 'championship',
+                  Regional: 'regional',
+                };
+                const colorKey = typeColors[ev.type] || 'other';
+                return (
+                  <a
+                    key={ev.id}
+                    href={ev.locatorUrl || 'https://locator.wizards.com'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`mtg-event-card mtg-event-card--${colorKey}`}
+                  >
+                    <div className="mtg-event-type-badge">{ev.type}</div>
+                    <div className="mtg-event-body">
+                      <p className="mtg-event-title">{ev.title}</p>
+                      {ev.format ? (
+                        <p className="mtg-event-format">{ev.format}</p>
+                      ) : null}
+                      {ev.storeName ? (
+                        <p className="mtg-event-store">{ev.storeName}</p>
+                      ) : null}
+                      <p className="mtg-event-schedule">
+                        {ev.date || ev.schedule}
+                      </p>
+                      {ev.description ? (
+                        <p className="mtg-event-desc">{ev.description}</p>
+                      ) : null}
+                    </div>
+                    {ev.isRecurring ? (
+                      <span className="mtg-event-recurring">Recurring</span>
+                    ) : null}
+                  </a>
+                );
+              })}
+            </div>
+          )}
         </section>
 
         {/* ── Best Offers ── */}

@@ -277,6 +277,166 @@ h1 {
   background: #ffffff;
 }
 
+/* ── MTG Events section ─────────────────────────────────────────── */
+
+.mtg-events-section {
+  margin-top: 2rem;
+}
+
+.mtg-events-header {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.mtg-events-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.mtg-events-subtitle {
+  color: var(--text-700);
+  font-size: 0.85rem;
+  flex: 1;
+}
+
+.mtg-events-locator-link {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--mint-400);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.mtg-events-locator-link:hover { text-decoration: underline; }
+
+.mtg-events-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+.mtg-event-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 0.85rem;
+  border: 1px solid var(--stroke);
+  background: var(--panel);
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: 0 6px 16px rgba(15, 33, 53, 0.07);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+  animation: fade-up 550ms ease-out both;
+}
+.mtg-event-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(15, 33, 53, 0.13);
+}
+
+/* Coloured left accent by event type */
+.mtg-event-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 4px;
+  border-radius: 0.85rem 0 0 0.85rem;
+}
+.mtg-event-card--fnm::before         { background: #6366f1; }
+.mtg-event-card--prerelease::before  { background: #f59e0b; }
+.mtg-event-card--commander::before   { background: #16a34a; }
+.mtg-event-card--draft::before       { background: #0ea5e9; }
+.mtg-event-card--championship::before{ background: #dc2626; }
+.mtg-event-card--regional::before    { background: #9333ea; }
+.mtg-event-card--other::before       { background: #64748b; }
+
+.mtg-event-type-badge {
+  padding: 0.35rem 0.75rem 0.35rem 1rem;
+  font-size: 0.67rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--stroke);
+}
+.mtg-event-card--fnm         .mtg-event-type-badge { color: #6366f1; background: #eef2ff; }
+.mtg-event-card--prerelease  .mtg-event-type-badge { color: #b45309; background: #fffbeb; }
+.mtg-event-card--commander   .mtg-event-type-badge { color: #15803d; background: #f0fdf4; }
+.mtg-event-card--draft       .mtg-event-type-badge { color: #0284c7; background: #f0f9ff; }
+.mtg-event-card--championship .mtg-event-type-badge{ color: #b91c1c; background: #fff5f5; }
+.mtg-event-card--regional    .mtg-event-type-badge { color: #7e22ce; background: #faf5ff; }
+.mtg-event-card--other       .mtg-event-type-badge { color: #475569; background: #f8fafc; }
+
+.mtg-event-body {
+  padding: 0.75rem 0.85rem 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+}
+
+.mtg-event-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-900);
+  line-height: 1.25;
+}
+
+.mtg-event-format {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-700);
+}
+
+.mtg-event-store {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-700);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mtg-event-schedule {
+  margin: 0.25rem 0 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--mint-400);
+}
+
+.mtg-event-desc {
+  margin: 0.3rem 0 0;
+  font-size: 0.77rem;
+  color: var(--text-700);
+  line-height: 1.45;
+}
+
+.mtg-event-recurring {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+  background: #f1f5f9;
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+@media (max-width: 600px) {
+  .mtg-events-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .mtg-event-desc { display: none; }
+}
+
+/* ── Legacy events grid (kept for compat) ─────────────────────────── */
+
 .events {
   margin-top: 1.2rem;
   display: grid;
