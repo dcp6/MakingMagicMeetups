@@ -100,6 +100,7 @@ fs.mkdirSync(dbDir, { recursive: true });
 
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON'); // enforce FK constraints at runtime (SQLite ignores them by default)
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1333,6 +1334,9 @@ async function validatePostgresRuntimeOrExit() {
     // The constraint name may vary; try both the default Postgres name and an explicit one.
     await pgQuery(`ALTER TABLE my_cards DROP CONSTRAINT IF EXISTS my_cards_account_id_card_name_key`);
 
+    // Security: wipe any legacy plaintext passwords stored in Postgres.
+    await pgQuery(`UPDATE accounts SET password_plain = NULL WHERE password_plain IS NOT NULL`);
+
     // Messages table (created if not present; harmless on existing schemas).
     await pgQuery(`
       CREATE TABLE IF NOT EXISTS messages (
@@ -1776,6 +1780,23 @@ function loadMapKitPrivateKey() {
 
 assertRuntimeConfigOrExit();
 
+// Security: wipe any legacy plaintext passwords stored in SQLite.
+// The column is kept for schema compat but must never hold real values.
+try {
+  db.exec(`UPDATE accounts SET password_plain = NULL WHERE password_plain IS NOT NULL`);
+} catch (_err) {
+  // Ignore if column doesn't exist on a very old schema.
+}
+
+// Warn loudly if the admin password is the hardcoded fallback.
+if (!process.env.ADMIN_PASSWORD) {
+  console.warn(
+    '[security] WARNING: ADMIN_PASSWORD env var is not set. ' +
+    'The server is using the insecure default admin password. ' +
+    'Set ADMIN_PASSWORD in your environment immediately.'
+  );
+}
+
 const app = express();
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
@@ -1832,7 +1853,7 @@ app.use((req, res, next) => {
 // Ensure browsers can complete CORS preflight requests (OPTIONS) for all endpoints.
 // Note: Express 5 (path-to-regexp v6) does not accept '*' as a route pattern.
 app.options(/.*/, cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' })); // explicit cap — default 100 kB is fine but must be stated
 
 app.get('/', (_req, res) => {
   res.json({ ok: true, service: 'making-magic-meetups-api' });
@@ -2048,13 +2069,22 @@ app.post('/api/accounts', async (req, res) => {
   if (!fullName || fullName.length < 2) {
     return res.status(400).json({ error: 'Please provide your full name.' });
   }
+  if (fullName.length > 100) {
+    return res.status(400).json({ error: 'Full name must be 100 characters or fewer.' });
+  }
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ error: 'Please provide a valid email.' });
   }
+  if (email.length > 254) {
+    return res.status(400).json({ error: 'Email address is too long.' });
+  }
 
   if (!password || password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  }
+  if (password.length > 1024) {
+    return res.status(400).json({ error: 'Password must be 1024 characters or fewer.' });
   }
 
   try {
@@ -2390,11 +2420,20 @@ app.patch('/api/me', async (req, res) => {
   if (!fullName || fullName.length < 2) {
     return res.status(400).json({ error: 'Please provide your full name.' });
   }
+  if (fullName.length > 100) {
+    return res.status(400).json({ error: 'Full name must be 100 characters or fewer.' });
+  }
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ error: 'Please provide a valid email.' });
   }
+  if (email.length > 254) {
+    return res.status(400).json({ error: 'Email address is too long.' });
+  }
   if (nextPassword !== null && nextPassword.length > 0 && nextPassword.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  }
+  if (nextPassword !== null && nextPassword.length > 1024) {
+    return res.status(400).json({ error: 'Password must be 1024 characters or fewer.' });
   }
   if (nextPassword !== null && nextPassword.length > 0) {
     if (!currentPassword) {
